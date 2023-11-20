@@ -3,13 +3,30 @@ Installation:
  2. Install UR Description:
     sudo apt-get install ros-humble-ur-description
  3. Install Omniverse: https://developer.nvidia.com/isaac-sim
- 4. In Omniverse install Isaac Sim
+ 4. In Omniverse install:
+      - Isaac Sim
+      - Nucleus -> Launch Local Server
+      - Recommended: Mucleus Navigator
  5. Launch Omnivere and enable ros2 bridge
  6. Us this to Launch:
-    ~/.local/share/ov/pkg/isaac_sim-2023.1.0/python.sh PATH/TO/CODE
+    ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh PATH/TO/CODE
 
 
 Convenience:
  - Set the Interpreter in VS to ~/.local/share/ov/pkg/isaac_sim-2023.1.0/python.sh
  - Add this to ~/.bashrc:
-    alias isaac="~/.local/share/ov/pkg/isaac_sim-2023.1.0/python.sh"
+    alias isaac="~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh"
+    alias isaacDir="open ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1"
+    alias isaacLog="open ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/logs/Kit/omni.isaac.sim.python.gym"
+    
+    Now luanch with: isaac PATH/TO/CODE
+
+
+Info:
+ - Isaac Defult Location:
+   open ~/.local/share/ov/pkg/isaac_sim-2023.1.0
+ - Log Location:
+   open ~/.local/share/ov/pkg/isaac_sim-2023.1.0/kit/logs/Kit/Isaac-Sim/2023.1/
+ - Isaac Assets Import
+    - Remote: http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/2023.1.0
+    - Local: omniverse://localhost/NVIDIA/Assets/Isaac/2023.1.0

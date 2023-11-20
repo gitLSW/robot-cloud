@@ -13,57 +13,126 @@ import numpy as np
 import omni.kit
 import torch
 from gymnasium import spaces
-from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.prims import XFormPrim
+from omni.isaac.core.articulations import ArticulationView, Articulation
 from omni.isaac.core.tasks.base_task import BaseTask
+# from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
+# from omni.isaac.universal_robots.tasks import PickPlace
+
 from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.viewports import set_camera_view
+
+from omni.isaac.core.utils.extensions import enable_extension
+enable_extension("omni.importer.urdf")
 from omni.importer.urdf import _urdf
+import omni.kit.commands
+import os
 
 
-class CartpoleTask(BaseTask):
+class PackTask(BaseTask):
     def __init__(self, name, offset=None) -> None:
+        self._robot_position = [0.0, 0.0, 0.0]
+
+        # values used for defining RL buffers
+        self._num_observations = 4
+        self._num_actions = 1
+        self._device = "cpu"
+        self.num_envs = 1
+
+        # set the action and observation space for RL
+        self.action_space = spaces.Box(
+            np.ones(self._num_actions, dtype=np.float32) * -1.0, np.ones(self._num_actions, dtype=np.float32) * 1.0
+        )
+        
+        self.observation_space = spaces.Box(
+            np.ones(self._num_observations, dtype=np.float32) * -np.Inf,
+            np.ones(self._num_observations, dtype=np.float32) * np.Inf,
+        )
+
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
 
+    # It seems Assets get dowloaded: http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/2023.1.0
+    # Find a USD File of the Warehouse
     def set_up_scene(self, scene) -> None:
-        world = self.get_world()
-        world.scene.add_default_ground_plane()
+        # super().set_up_scene(scene)
+        
+        # retrieve file path for the Cartpole USD file
+        assets_root_path = get_assets_root_path()
+        prim_path="/World/Warehouse"
+        warehouse = create_prim(prim_path=prim_path, prim_type="Xform", position=self._robot_position)
+        usd_path = "omniverse://localhost/NVIDIA/Assets/Isaac/2023.1.0/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
+        add_reference_to_stage(usd_path, prim_path)
+        # scene.add(warehouse)
+        
+        # # Acquire the URDF extension interface
+        # urdf_interface = _urdf.acquire_urdf_interface()
 
-        # Acquire the URDF extension interface
-        urdf_interface = _urdf.acquire_urdf_interface()
+        # # Set the settings in the import config
+        # import_config = _urdf.ImportConfig()
+        # import_config.merge_fixed_joints = False
+        # import_config.convex_decomp = False
+        # import_config.import_inertia_tensor = True
+        # import_config.fix_base = True
+        # import_config.make_default_prim = True
+        # import_config.self_collision = False
+        # import_config.create_physics_scene = True
+        # import_config.import_inertia_tensor = False
+        # import_config.default_drive_strength = 1047.19751
+        # import_config.default_position_drive_damping = 52.35988
+        # import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+        # import_config.distance_scale = 1
+        # import_config.density = 0.0
 
-        # Set the settings in the import config
-        import_config = _urdf.ImportConfig()
-        import_config.merge_fixed_joints = False
-        import_config.convex_decomp = False
-        import_config.import_inertia_tensor = True
-        import_config.fix_base = True
-        import_config.make_default_prim = True
-        import_config.self_collision = False
-        import_config.create_physics_scene = True
-        import_config.import_inertia_tensor = False
-        import_config.default_drive_strength = 1047.19751
-        import_config.default_position_drive_damping = 52.35988
-        import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
-        import_config.distance_scale = 1
-        import_config.density = 0.0
+        # # Get the urdf file path
+        # extension_path = get_extension_path_from_name("omni.importer.urdf")
+        # root_path = extension_path + "/data/urdf/robots/franka_description/robots"
+        # file_name = "panda_arm_hand.urdf"
 
-        # Get the urdf file path
-        extension_path = get_extension_path_from_name("omni.importer.urdf")
-        root_path = extension_path + "/data/urdf/robots/franka_description/robots"
-        file_name = "panda_arm_hand.urdf"
+        # # Finally import the robot
+        # result, prim_path = omni.kit.commands.execute( "URDFParseAndImportFile", urdf_path="{}/{}".format(root_path, file_name),
+        #                                              import_config=import_config,)
+        
+        # create an ArticulationView wrapper for our cartpole - this can be extended towards accessing multiple cartpoles
+        # self._cartpoles = ArticulationView(prim_paths_expr="/World/Cartpole*", name="cartpole_view")
+        # # add Cartpole ArticulationView and ground plane to the Scene
+        # scene.add(self._cartpoles)
+        # scene.add_default_ground_plane()
 
-        # Finally import the robot
-        result, prim_path = omni.kit.commands.execute( "URDFParseAndImportFile", urdf_path="{}/{}".format(root_path, file_name), import_config=import_config,)
+        # setting up import configuration:
+        # status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
+        # import_config.merge_fixed_joints = False
+        # import_config.convex_decomp = False
+        # import_config.import_inertia_tensor = True
+        # import_config.fix_base = False
+        # import_config.collision_from_visuals = False
+
+        # # Get path to extension data:
+        # # ext_manager = omni.kit.app.get_app().get_extension_manager()
+        # # ext_id = ext_manager.get_enabled_extension_id("omni.importer.urdf")
+        # # extension_path = ext_manager.get_extension_path(ext_id)
+
+        # # import URDF
+        # omni.kit.commands.execute(
+        #     "URDFParseAndImportFile",
+        #     urdf_path=os.getcwd() + "/ur10e.urdf",
+        #     import_config=import_config,
+        # )
+        
+        # set default camera viewport position and target
+        self.set_initial_camera_params()
+
 
     def set_initial_camera_params(self, camera_position=[10, 10, 3], camera_target=[0, 0, 0]):
         set_camera_view(eye=camera_position, target=camera_target, camera_prim_path="/OmniverseKit_Persp")
 
     def post_reset(self):
+        return
 
     def reset(self, env_ids=None):
+        return
 
     def pre_physics_step(self, actions) -> None:
         reset_env_ids = self.resets.nonzero(as_tuple=False).squeeze(-1)
@@ -79,10 +148,10 @@ class CartpoleTask(BaseTask):
         self._cartpoles.set_joint_efforts(forces, indices=indices)
 
     def get_observations(self):
-        return self.obs
+        return []
 
     def calculate_metrics(self) -> None:
-        return reward.item()
+        return 0
 
     def is_done(self) -> None:
-        return resets.item()
+        return False
