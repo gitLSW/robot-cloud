@@ -7,6 +7,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 #
 
+import os
 # import stable baselines
 import carb
 
@@ -31,7 +32,7 @@ except Exception as e:
 # create isaac environment
 from omni.isaac.gym.vec_env import VecEnvBase
 
-env = VecEnvBase(headless=False) # Open Sim Window
+env = VecEnvBase(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit') # Open Sim Window
 
 # create task and register task
 from pack_task import PackTask
@@ -54,7 +55,8 @@ env.set_task(task, backend="torch")
 # model.learn(total_timesteps=100000)
 # model.save("ddpg_pack")
 
+import time
 while True:
-    print('Hi')
+    time.sleep(10)
 
 # env.close()

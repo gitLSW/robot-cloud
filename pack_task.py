@@ -61,46 +61,40 @@ class PackTask(BaseTask):
         
         # retrieve file path for the Cartpole USD file
         assets_root_path = get_assets_root_path()
-        prim_path="/World/Warehouse"
-        warehouse = create_prim(prim_path=prim_path, prim_type="Xform", position=self._robot_position)
-        usd_path = "omniverse://localhost/NVIDIA/Assets/Isaac/2023.1.0/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
-        add_reference_to_stage(usd_path, prim_path)
-        # scene.add(warehouse)
+        # env_prim_path="/World/Warehouse"
+        # create_prim(prim_path=env_prim_path, prim_type="Xform", position=self._robot_position)
+        # usd_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
+        # add_reference_to_stage(usd_path, env_prim_path)
         
-        # # Acquire the URDF extension interface
-        # urdf_interface = _urdf.acquire_urdf_interface()
+        # Acquire the URDF extension interface
+        urdf_interface = _urdf.acquire_urdf_interface()
 
-        # # Set the settings in the import config
-        # import_config = _urdf.ImportConfig()
-        # import_config.merge_fixed_joints = False
-        # import_config.convex_decomp = False
-        # import_config.import_inertia_tensor = True
-        # import_config.fix_base = True
-        # import_config.make_default_prim = True
-        # import_config.self_collision = False
-        # import_config.create_physics_scene = True
-        # import_config.import_inertia_tensor = False
+        # Set the settings in the import config
+        import_config = _urdf.ImportConfig()
+        import_config.merge_fixed_joints = False
+        import_config.convex_decomp = False
+        import_config.import_inertia_tensor = True
+        import_config.fix_base = True
+        import_config.make_default_prim = True
+        import_config.self_collision = False
+        import_config.create_physics_scene = True
+        import_config.import_inertia_tensor = False
         # import_config.default_drive_strength = 1047.19751
         # import_config.default_position_drive_damping = 52.35988
         # import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
         # import_config.distance_scale = 1
         # import_config.density = 0.0
 
-        # # Get the urdf file path
-        # extension_path = get_extension_path_from_name("omni.importer.urdf")
-        # root_path = extension_path + "/data/urdf/robots/franka_description/robots"
-        # file_name = "panda_arm_hand.urdf"
-
-        # # Finally import the robot
-        # result, prim_path = omni.kit.commands.execute( "URDFParseAndImportFile", urdf_path="{}/{}".format(root_path, file_name),
-        #                                              import_config=import_config,)
+        # Finally import the robot
+        robot_dir = os.getcwd() + '/robot'
+        result, robot_prim_path = omni.kit.commands.execute(
+                "URDFParseAndImportFile", 
+                urdf_path=robot_dir + '/ur10e.urdf',
+                import_config=import_config
+            )
+        usd_path = robot_dir + '/ur10e.usd' # assets_root_path + "/Isaac/Robots/UniversalRobots/ur10e/ur10e.usd"
+        add_reference_to_stage(usd_path=usd_path, prim_path=robot_prim_path)      
         
-        # create an ArticulationView wrapper for our cartpole - this can be extended towards accessing multiple cartpoles
-        # self._cartpoles = ArticulationView(prim_paths_expr="/World/Cartpole*", name="cartpole_view")
-        # # add Cartpole ArticulationView and ground plane to the Scene
-        # scene.add(self._cartpoles)
-        # scene.add_default_ground_plane()
-
         # setting up import configuration:
         # status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
         # import_config.merge_fixed_joints = False
@@ -125,7 +119,7 @@ class PackTask(BaseTask):
         self.set_initial_camera_params()
 
 
-    def set_initial_camera_params(self, camera_position=[10, 10, 3], camera_target=[0, 0, 0]):
+    def set_initial_camera_params(self, camera_position=[20, 20, 10], camera_target=[0, 0, 0]):
         set_camera_view(eye=camera_position, target=camera_target, camera_prim_path="/OmniverseKit_Persp")
 
     def post_reset(self):
