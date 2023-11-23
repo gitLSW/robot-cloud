@@ -10,6 +10,7 @@
 import os
 # import stable baselines
 import carb
+import torch
 
 try:
     from stable_baselines3 import DDPG
@@ -41,10 +42,10 @@ task = PackTask(name="Pack")
 env.set_task(task, backend="torch")
 env.reset()
 
-for i in range(500):
-    env.step(render=True) # execute one physics step and one rendering step
-
 print('Starting Training...')
+
+for i in range(15000):
+    env.step(actions=torch.ones(5)) # execute one physics step and one rendering step
 
 # create agent from stable baselines
 # model = DDPG(
@@ -60,9 +61,5 @@ print('Starting Training...')
 # )
 # model.learn(total_timesteps=100000)
 # model.save("ddpg_pack")
-
-import time
-while True:
-    time.sleep(10)
 
 # env.close()

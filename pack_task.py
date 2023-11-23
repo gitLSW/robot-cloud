@@ -14,6 +14,7 @@ import torch
 
 from gymnasium import spaces
 
+from camera import VideoFeed
 from omni.isaac.core.utils.extensions import enable_extension
 # enable_extension("omni.importer.urdf")
 enable_extension("omni.isaac.universal_robots")
@@ -27,8 +28,8 @@ from omni.isaac.universal_robots.ur10 import UR10
 
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.gym.tasks.rl_task import RLTaskInterface
-# from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.utils.prims import create_prim
+from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.viewports import set_camera_view
 
@@ -70,7 +71,8 @@ class PackTask(BaseTask):
         # assets_root_path = get_assets_root_path()
 
         # create_prim(prim_path=ENV_PATH, prim_type="Xform", position=[0, 0, 0])
-        # add_reference_to_stage(assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd", ROBOT_PATH)
+        # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
+        # add_reference_to_stage(warehouse_path, ROBOT_PATH)
         
         scene.add_default_ground_plane()
 
@@ -93,7 +95,8 @@ class PackTask(BaseTask):
 
 
     def reset_cameras(self):
-        set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
+        self.video_feed = VideoFeed(position=[7, 9, 3], target=ROBOT_POS, width=500, height=500, freq=50, headless=False, camera_path="/World/Camera/1")
+        # set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
 
     def post_reset(self):
         return
@@ -101,10 +104,20 @@ class PackTask(BaseTask):
     def reset(self, env_ids=None):
         self.robot.initialize()
         self.robot.set_joint_positions(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-        print('resetted BIAAATCHHH')
         return
 
-    # def pre_physics_step(self, actions) -> None:
+    # def pre_step(self, time_step_index: int, simulation_time: float) -> None:
+    #     """called before stepping the physics simulation.
+
+    #     Args:
+    #         time_step_index (int): [description]
+    #         simulation_time (float): [description]
+    #     """
+    #     return
+    
+    def pre_physics_step(self, actions) -> None:
+        print('Pre Physics')
+        self.video_feed.get_image()
     #     reset_env_ids = self.resets.nonzero(as_tuple=False).squeeze(-1)
     #     if len(reset_env_ids) > 0:
     #         self.reset(reset_env_ids)
@@ -116,6 +129,7 @@ class PackTask(BaseTask):
 
     #     indices = torch.arange(self._cartpoles.count, dtype=torch.int32, device=self._device)
     #     self._cartpoles.set_joint_efforts(forces, indices=indices)
+        return
 
     def get_observations(self):
         # self.robot.end_effector
