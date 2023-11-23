@@ -83,7 +83,7 @@ class PackTask(BaseTask):
 
         self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=os.getcwd() + '/robot/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
-        self.robot.set_joint_positions(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
+        # self.robot.set_joint_positions(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
 
         # set default camera viewport position and target
         self.reset_cameras()
