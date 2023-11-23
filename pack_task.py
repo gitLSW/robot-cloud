@@ -27,7 +27,7 @@ from omni.isaac.universal_robots.ur10 import UR10
 
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.gym.tasks.rl_task import RLTaskInterface
-from omni.isaac.core.utils.nucleus import get_assets_root_path
+# from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.utils.prims import create_prim
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.viewports import set_camera_view
@@ -63,9 +63,11 @@ class PackTask(BaseTask):
     def set_up_scene(self, scene) -> None:
         super().set_up_scene(scene)
 
+        local_assets = os.getcwd() + '/assets'
+
         # This is the URL from which the Assets are downloaded
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
-        assets_root_path = get_assets_root_path()
+        # assets_root_path = get_assets_root_path()
 
         # create_prim(prim_path=ENV_PATH, prim_type="Xform", position=[0, 0, 0])
         # add_reference_to_stage(assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd", ROBOT_PATH)
@@ -75,16 +77,17 @@ class PackTask(BaseTask):
         create_prim(prim_path=START_TABLE_PATH, prim_type="Xform",
                     position=[5.36, 2.29, 0],
                     scale=[0.5, 1, 0.5])
-        add_reference_to_stage(assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd", START_TABLE_PATH)
+        # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        add_reference_to_stage(local_assets + '/table_low.usd', START_TABLE_PATH)
 
         create_prim(prim_path=DESTINATION_BOX_PATH, prim_type="Xform", position=[5, 4.43, 0])
-        add_reference_to_stage(assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd", DESTINATION_BOX_PATH)
+        # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
+        add_reference_to_stage(local_assets + '/SM_CardBoxA_02.usd', DESTINATION_BOX_PATH)
         # self._box = XFormPrim(prim_path=DESTINATION_BOX_PATH)
 
-        self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=os.getcwd() + '/robot/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
-        # self.robot.set_joints_default_state(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
-        # self.robot.set_joint_positions(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
-
+        self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=local_assets + '/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
+        # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+        
         # set default camera viewport position and target
         self.reset_cameras()
 
@@ -96,12 +99,9 @@ class PackTask(BaseTask):
         return
 
     def reset(self, env_ids=None):
-        # self.robot.initialize()
-
-        # self.robot.set_joint_positions(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
-        # print(self.robot.get_joints_default_state())
-        # print(self.robot.get_joint_positions())
-        
+        self.robot.initialize()
+        self.robot.set_joint_positions(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+        print('resetted BIAAATCHHH')
         return
 
     # def pre_physics_step(self, actions) -> None:

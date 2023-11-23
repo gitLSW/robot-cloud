@@ -39,6 +39,10 @@ from pack_task import PackTask
 
 task = PackTask(name="Pack")
 env.set_task(task, backend="torch")
+env.reset()
+
+for i in range(500):
+    env.step(render=True) # execute one physics step and one rendering step
 
 print('Starting Training...')
 

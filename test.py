@@ -16,21 +16,20 @@ world = World(stage_units_in_meters=1.0)
 world.scene.add_default_ground_plane()
 
 robot = UR10(prim_path='/World/UR10', name='UR10')
-robot.set_joints_default_state(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
+# robot.set_joints_default_state(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
 
 world.reset()
 robot.initialize()
 
-robot.set_joint_positions(positions=[-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
-print(robot.get_joints_default_state())
-print(robot.get_joint_positions())
+# print(robot.get_joints_default_state())
+# print(robot.get_joint_positions())
 
 # robot.set_joints_default_state(positions=np.array([-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0]))
-# robot.set_joint_positions ([-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
+robot.set_joint_positions([-np.pi / 2, -np.pi / 2, -np.pi / 2, -np.pi / 2, np.pi / 2, 0])
 
 print('World Loaded...')
 
-for i in range(500):
+for i in range(10):
     world.step(render=True) # execute one physics step and one rendering step
 
 simulation_app.close() # close Isaac Sim
