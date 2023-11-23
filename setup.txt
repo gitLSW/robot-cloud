@@ -6,10 +6,20 @@ Installation:
  4. In Omniverse install:
       - Isaac Sim
       - Nucleus -> Launch Local Server
-      - Recommended: Mucleus Navigator
- 5. Launch Omnivere and enable ros2 bridge
- 6. Us this to Launch:
-    ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh PATH/TO/CODE
+      - Recommended: Nucleus Navigator
+ 6. To Launch:
+    1. First Launch Omniverse and connect to your local nucleus server.
+    	- If you forgot your login: 
+    		Uninstall Nucleus
+    		Delete the folders below:
+        		~/.local/share/ov/data/Auth
+        		~/.local/share/ov/data/server
+        		~/.local/share/ov/data/tagging_service
+    		Re-install Nucleus
+      - To find the Isaac Assets navigate using the Nucleus Navigator to:
+            localhost/NVIDIA/Assets/Isaac
+    2.Start your Isaac Python Scripts:
+    	~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh PATH/TO/CODE.py
 
 
 Convenience:

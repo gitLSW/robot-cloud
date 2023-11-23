@@ -40,6 +40,8 @@ from pack_task import PackTask
 task = PackTask(name="Pack")
 env.set_task(task, backend="torch")
 
+print('Starting Training...')
+
 # create agent from stable baselines
 # model = DDPG(
 #     "MlpPolicy",
