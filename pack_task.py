@@ -10,7 +10,6 @@
 import os
 import math
 import numpy as np
-import glm
 import torch
 
 from gymnasium import spaces
@@ -49,10 +48,10 @@ START_TABLE_PATH = "/World/StartTable"
 START_TABLE_POS = [0.36, 1.29, 0]
 
 DEST_BOX_PATH = "/World/DestinationBox"
-DEST_BOX_POS = [0, -0.5, 0]
+DEST_BOX_POS = [2, -2, 0]
 
-CAMERA_PATH = '/World/Camera'
-CAMERA_POS_1 = [10, -15, 7]# [3, -3, 2.5]
+CAMERA_PATH = '/World/Camera' 
+CAMERA_POS_1 = [12, -10, 1] # [3, -3, 2.5]
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -62,7 +61,6 @@ class PackTask(BaseTask):
         offset (Optional[np.ndarray], optional): offset applied to all assets of the task.
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
-
     def __init__(self, name, offset=None, sim_s_step_freq: int = 60) -> None:
         # self._num_observations = 4
         # self._num_actions = 1
@@ -75,16 +73,20 @@ class PackTask(BaseTask):
         # We need 7 image dimensions: for rgb (=>3), depth (black/white=>1), image_segmentation (=rgb=>3)
         self.observation_space = spaces.Box(low=0, high=255, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7))
 
-        # The NN outputs the rotations for each joint
-        self.action_space = spaces.Box(low=0, high=255, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7))
-        # self.action_space = spaces.Sequence(space=[
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Base
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Shoulder
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Elbow
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Wrist 1
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Wrist 2
-        #     spaces.Box(low=-360, high=360, shape=(1,)), # Wrist 3
-        # ])
+        # The UR10e has for every joint a maximum:
+        # turning angle of -360 deg to +360 deg
+        # turning ange of max speed is 191deg/s
+        # The NN outputs the change in rotation for each joint
+        joint_rot_max = 190 / sim_s_step_freq
+        self.action_space = spaces.Tuple(spaces=[
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Base
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Shoulder
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Elbow
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 1
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 2
+            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 3
+            spaces.Box(low=0, high=5, shape=(1,)), # Gripper in cm of opening
+        ])
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -125,6 +127,7 @@ class PackTask(BaseTask):
             position=torch.tensor(CAMERA_POS_1),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
+        # self.__camera.set_focus_distance(40)
 
         self.__moveCamera(position=CAMERA_POS_1, target=ROBOT_POS)
 
@@ -132,7 +135,8 @@ class PackTask(BaseTask):
         viewport.set_active_camera(CAMERA_PATH)
 
         # set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
-        
+    
+    
     def __moveCamera(self, position, target):
         pos = np.array(position)
         target = np.array(target)
@@ -141,12 +145,47 @@ class PackTask(BaseTask):
         forwards = np.array([1, 0, 0])
         rot_axis = np.cross(forwards, dir_vec)
         dot = np.dot(forwards, dir_vec)
-
+        quat = [dot + 1, *rot_axis]
         # orient = rot_utils.euler_angles_to_quats([0, 45, 0], degrees=True)
-        quat = [dot + 1, rot_axis[0], rot_axis[1], rot_axis[2]]
-        print(quat)
         self.__camera.set_world_pose(position=position, orientation=quat)
         return
+    
+        # Spent ages making this more efficent approach work, here are some amazing highlights I came to relize.
+        # The Docs say the following: Quat Notation is (w,x,y,z), but in the simlation the quats are all shifted wrong
+        # The Cameras Forward is +X and Up is +Z
+        
+        # pos = np.array(position)
+        # target = np.array(target)
+        # forward = target - pos
+        # forward = forward / np.linalg.norm(forward)
+        # print(forward)
+
+        # # Define the desired up direction for the camera
+        # up = np.array([0, 0, 1])  # Assuming up is in the +z direction
+        # print(up)
+
+        # # Calculate the new camera axes (forward and right) using cross products
+        # right = np.cross(up, forward)
+        # right = right / np.linalg.norm(right)
+        # print(right)
+
+        # up = np.cross(forward, right)
+        # up = up / np.linalg.norm(up)
+        # print(up)
+
+        # # right = np.array([0, 1, 0])
+        # # forward = np.array([1, 0, 0])
+        # # up = np.array([0, 0, 1])
+
+        # # Create a rotation matrix that aligns the camera axes with the world axes
+        # rot_matr = np.array([right, forward, up]).T
+
+        # # Create the quaternion representing the combined rotation
+        # orientation_quat = rot_utils.rot_matrices_to_quats(rot_matr)
+        # print(orientation_quat)
+        
+        # self.__camera.set_world_pose(position=pos, orientation=orientation_quat)
+        # return
 
     def post_reset(self):
         return
@@ -160,38 +199,23 @@ class PackTask(BaseTask):
         return
 
     # def pre_step(self, time_step_index: int, simulation_time: float) -> None:
-    #     """called before stepping the physics simulation.
-
-    #     Args:
-    #         time_step_index (int): [description]
-    #         simulation_time (float): [description]
-    #     """
     #     return
     
     def pre_physics_step(self, actions) -> None:
-        # print('Camera Image Options: ', self.camera.get_current_frame().keys())
-        frame = self.__camera.get_current_frame()
-        img_rgba = frame['rgba']
-        img_depth = frame['distance_to_image_plane']
-        img_seg = frame['instance_id_segmentation']
-
-    #     reset_env_ids = self.resets.nonzero(as_tuple=False).squeeze(-1)
-    #     if len(reset_env_ids) > 0:
-    #         self.reset(reset_env_ids)
-
-    #     actions = torch.tensor(actions)
-
-    #     forces = torch.zeros((self._cartpoles.count, self._cartpoles.num_dof), dtype=torch.float32, device=self._device)
-    #     forces[:, self._cart_dof_idx] = self._max_push_effort * actions[0]
-
-    #     indices = torch.arange(self._cartpoles.count, dtype=torch.int32, device=self._device)
-    #     self._cartpoles.set_joint_efforts(forces, indices=indices)
+        print(actions)
+        joint_rots = self.robot.get_joint_positions()
+        joint_rots += np.array(actions[0:6])
+        joint_rots.concatenate(actions[6])
+        self.robot.set_joint_positions(positions=joint_rots)
         return
 
     def get_observations(self):
-        # self.robot.end_effector
-        # self.robot.gripper
-        return []
+        frame = self.__camera.get_current_frame()
+        # print('Camera Image Options: ', frame.keys())
+        img_rgba = frame['rgba'] # = [[[r, g, b, a]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
+        img_depth = frame['distance_to_image_plane'] # = [[depth]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
+        img_seg = frame['instance_id_segmentation'] # = [[img_seg]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
+        return map(lambda rows, i: map(lambda pixel, j: [*pixel[0:3], img_depth[i][j], img_seg[i][j]], np.ndenumerate(rows)), np.ndenumerate(img_rgba))
 
     def calculate_metrics(self) -> None:
         return 0
