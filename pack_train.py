@@ -39,12 +39,12 @@ env = VecEnvBase(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaa
 from pack_task import PackTask
 
 task = PackTask(name="Pack")
-env.set_task(task, backend="torch")
+env.set_task(task, backend="numpy")
 env.reset()
 
 print('Starting Training...')
 
-for i in range(15000):
+for i in range(50000):
     env.step(actions=torch.ones(5)) # execute one physics step and one rendering step
 
 # create agent from stable baselines
