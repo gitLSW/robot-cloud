@@ -76,22 +76,14 @@ class PackTask(BaseTask):
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
         # We need 7 image dimensions: for rgb (=>3), depth (black/white=>1), image_segmentation (=rgb=>3)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7))
+        self.observation_space = spaces.Tuple(
+            spaces.Box(low=0, high=255, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7)),
+            # Robot Joints or Gripper Orient and pos missing
+        )
 
-        # The UR10e has for every joint a maximum:
-        # turning angle of -360 deg to +360 deg
-        # turning ange of max speed is 191deg/s
         # The NN outputs the change in rotation for each joint
         joint_rot_max = 190 / sim_s_step_freq
-        self.action_space = spaces.Tuple(spaces=[
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Base
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Shoulder
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Elbow
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 1
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 2
-            spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 3
-            spaces.Discrete(2, start=0), # Gripper: 0 = open, 1 = closed
-        ])
+        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,))
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -122,13 +114,16 @@ class PackTask(BaseTask):
         add_reference_to_stage(local_assets + '/SM_CardBoxA_02.usd', DEST_BOX_PATH)
         # self._box = XFormPrim(prim_path=DEST_BOX_PATH)
 
+        # The UR10e has 6 joints, each with a maximum:
+        # turning angle of -360 deg to +360 deg
+        # turning ange of max speed is 191deg/s
         self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=local_assets + '/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         for i in range(5):
             scene.add(objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
-                                        position=PARTS_SOURCE,
-                                        scale=[1, 1, 1]))
+                                         position=PARTS_SOURCE,
+                                         scale=[1, 1, 1]))
 
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
