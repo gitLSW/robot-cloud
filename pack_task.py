@@ -52,11 +52,11 @@ DEST_BOX_PATH = "/World/DestinationBox"
 DEST_BOX_POS = [2, -2, 0]
 
 PARTS_PATH = '/World/Parts'
-PARTS_SOURCE = np.array(START_TABLE_POS) + np.array([0, 0, 2])
+PARTS_SOURCE = np.array(START_TABLE_POS) + np.array([0, 0, 3])
 
 CAMERA_PATH = '/World/Camera' 
 CAMERA_POS_START = [3, -3, 2.5] 
-CAMERA_POS_DEST = [2, 3, 2.5]
+CAMERA_POS_DEST = [4, 4, 2.5]
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -90,7 +90,7 @@ class PackTask(BaseTask):
             spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 1
             spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 2
             spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,)), # Wrist 3
-            spaces.Box(low=0, high=5, shape=(1,)), # Gripper in cm of opening
+            spaces.Discrete(2, start=0), # Gripper: 0 = open, 1 = closed
         ])
 
         # trigger __init__ of parent class
@@ -126,9 +126,9 @@ class PackTask(BaseTask):
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         for i in range(5):
-            scene.add(objs.DynamicCuboid(prim_path=PARTS_PATH, name=f'Part_{i}',
+            scene.add(objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
                                         position=PARTS_SOURCE,
-                                        scale=[0.1, 0.1, 0.1]))
+                                        scale=[1, 1, 1]))
 
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
@@ -183,10 +183,13 @@ class PackTask(BaseTask):
         self.robot.set_joint_positions(positions=joint_rots)
         # Open or close Gripper
         gripper = self.robot.gripper
-        if (actions[6] < 0):
-            gripper.close()
-        else:
-            gripper.open()
+        curr_gripper_state = gripper.is_closed()
+        new_gripper_state = actions[6]
+        if (new_gripper_state != curr_gripper_state):
+            if (new_gripper_state == 1):
+                gripper.open()
+            else:
+                gripper.close()
         return
 
     # Calculate Rewards
@@ -197,11 +200,11 @@ class PackTask(BaseTask):
         gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         
         # Move Camera
-        curr_cam_pos = self.__camera.get_world_pose()[0]
-        new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
-        if new_cam_pose != curr_cam_pos:
-            self.__moveCamera(new_cam_pose, ROBOT_POS)
-        return reward.item()
+        # curr_cam_pos = self.__camera.get_world_pose()[0]
+        # new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
+        # if not np.array_equal(new_cam_pose, curr_cam_pos):
+        #     self.__moveCamera(new_cam_pose, ROBOT_POS)
+        return -gripper_to_dest
 
     def is_done(self) -> None:
         return False
