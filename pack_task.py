@@ -149,43 +149,6 @@ class PackTask(BaseTask):
         # orient = rot_utils.euler_angles_to_quats([0, 45, 0], degrees=True)
         self.__camera.set_world_pose(position=position, orientation=quat)
         return
-    
-        # Spent ages making this more efficent approach work, here are some amazing highlights I came to relize.
-        # The Docs say the following: Quat Notation is (w,x,y,z), but in the simlation the quats are all shifted wrong
-        # The Cameras Forward is +X and Up is +Z
-        
-        # pos = np.array(position)
-        # target = np.array(target)
-        # forward = target - pos
-        # forward = forward / np.linalg.norm(forward)
-        # print(forward)
-
-        # # Define the desired up direction for the camera
-        # up = np.array([0, 0, 1])  # Assuming up is in the +z direction
-        # print(up)
-
-        # # Calculate the new camera axes (forward and right) using cross products
-        # right = np.cross(up, forward)
-        # right = right / np.linalg.norm(right)
-        # print(right)
-
-        # up = np.cross(forward, right)
-        # up = up / np.linalg.norm(up)
-        # print(up)
-
-        # # right = np.array([0, 1, 0])
-        # # forward = np.array([1, 0, 0])
-        # # up = np.array([0, 0, 1])
-
-        # # Create a rotation matrix that aligns the camera axes with the world axes
-        # rot_matr = np.array([right, forward, up]).T
-
-        # # Create the quaternion representing the combined rotation
-        # orientation_quat = rot_utils.rot_matrices_to_quats(rot_matr)
-        # print(orientation_quat)
-        
-        # self.__camera.set_world_pose(position=pos, orientation=orientation_quat)
-        # return
 
     def post_reset(self):
         return

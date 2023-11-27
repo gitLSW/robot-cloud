@@ -1,0 +1,78 @@
+
+    
+        # Spent ages making this more efficent approach work, here are some amazing highlights I came to relize.
+        # The Docs say the following: Quat Notation is (w,x,y,z), but in the simlation the quats are all shifted wrong
+        # The Cameras Forward is +X and Up is +Z
+        
+        # pos = np.array(position)
+        # target = np.array(target)
+        # forward = target - pos
+        # forward = forward / np.linalg.norm(forward)
+        # print(forward)
+
+        # # Define the desired up direction for the camera
+        # up = np.array([0, 0, 1])  # Assuming up is in the +z direction
+        # print(up)
+
+        # # Calculate the new camera axes (forward and right) using cross products
+        # right = np.cross(up, forward)
+        # right = right / np.linalg.norm(right)
+        # print(right)
+
+        # up = np.cross(forward, right)
+        # up = up / np.linalg.norm(up)
+        # print(up)
+
+        # # right = np.array([0, 1, 0])
+        # # forward = np.array([1, 0, 0])
+        # # up = np.array([0, 0, 1])
+
+        # # Create a rotation matrix that aligns the camera axes with the world axes
+        # rot_matr = np.array([right, forward, up]).T
+
+        # # Create the quaternion representing the combined rotation
+        # orientation_quat = rot_utils.rot_matrices_to_quats(rot_matr)
+        # print(orientation_quat)
+        
+
+
+
+
+
+
+
+
+
+
+
+        # self.__camera.set_world_pose(position=pos, orientation=orientation_quat)
+        # return        
+        # Acquire the URDF extension interface
+        # urdf_interface = _urdf.acquire_urdf_interface()
+
+        # Set the settings in the import config
+        # import_config = _urdf.ImportConfig()
+        # import_config.merge_fixed_joints = False
+        # import_config.convex_decomp = False
+        # import_config.import_inertia_tensor = True
+        # import_config.fix_base = True
+        # import_config.make_default_prim = True
+        # import_config.self_collision = False
+        # import_config.create_physics_scene = True
+        # import_config.import_inertia_tensor = False
+        # # import_config.default_drive_strength = 1047.19751
+        # # import_config.default_position_drive_damping = 52.35988
+        # # import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+        # # import_config.distance_scale = 1
+        # # import_config.density = 0.0
+
+        # Finally import the robot
+        # robot_dir = os.getcwd() + '/robot'
+        # result, robot_prim_path = omni.kit.commands.execute(
+        #         "URDFParseAndImportFile", 
+        #         urdf_path=robot_dir + '/ur10e.urdf',
+        #         import_config=import_config
+        #     )
+        # usd_path = robot_dir + '/ur10e.usd' # assets_root_path + "/Isaac/Robots/UniversalRobots/ur10e/ur10e.usd"
+        # add_reference_to_stage(usd_path=usd_path, prim_path=robot_prim_path)  
+
