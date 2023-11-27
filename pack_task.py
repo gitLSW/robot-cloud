@@ -37,6 +37,7 @@ from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.viewports import set_camera_view
 from omni.kit.viewport.utility import get_active_viewport
+import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 
 ENV_PATH = "/World/Env"
@@ -50,8 +51,12 @@ START_TABLE_POS = [0.36, 1.29, 0]
 DEST_BOX_PATH = "/World/DestinationBox"
 DEST_BOX_POS = [2, -2, 0]
 
+PARTS_PATH = '/World/Parts'
+PARTS_SOURCE = np.array(START_TABLE_POS) + np.array([0, 0, 2])
+
 CAMERA_PATH = '/World/Camera' 
-CAMERA_POS_1 = [12, -10, 1] # [3, -3, 2.5]
+CAMERA_POS_START = [3, -3, 2.5] 
+CAMERA_POS_DEST = [2, 3, 2.5]
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -62,9 +67,9 @@ class PackTask(BaseTask):
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
     def __init__(self, name, offset=None, sim_s_step_freq: int = 60) -> None:
-        # self._num_observations = 4
+        # self._num_observations = 1
         # self._num_actions = 1
-        # self._device = "cpu"
+        self._device = "cpu"
         self.num_envs = 1
         self.sim_s_step_freq = sim_s_step_freq
 
@@ -119,23 +124,27 @@ class PackTask(BaseTask):
 
         self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=local_assets + '/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-        
+
+        for i in range(5):
+            scene.add(objs.DynamicCuboid(prim_path=PARTS_PATH, name=f'Part_{i}',
+                                        position=PARTS_SOURCE,
+                                        scale=[0.1, 0.1, 0.1]))
+
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
             frequency=20,
             resolution=IMG_RESOLUTION,
-            position=torch.tensor(CAMERA_POS_1),
+            # position=torch.tensor(CAMERA_POS_START),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
         # self.__camera.set_focus_distance(40)
 
-        self.__moveCamera(position=CAMERA_POS_1, target=ROBOT_POS)
+        self.__moveCamera(position=CAMERA_POS_START, target=ROBOT_POS)
 
         viewport = get_active_viewport()
         viewport.set_active_camera(CAMERA_PATH)
 
         # set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
-    
     
     def __moveCamera(self, position, target):
         pos = np.array(position)
@@ -150,26 +159,12 @@ class PackTask(BaseTask):
         self.__camera.set_world_pose(position=position, orientation=quat)
         return
 
-    def post_reset(self):
-        return
-
     def reset(self, env_ids=None):
         self.robot.initialize()
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
         self.robot.set_joint_positions(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-        return
-
-    # def pre_step(self, time_step_index: int, simulation_time: float) -> None:
-    #     return
-    
-    def pre_physics_step(self, actions) -> None:
-        print(actions)
-        joint_rots = self.robot.get_joint_positions()
-        joint_rots += np.array(actions[0:6])
-        joint_rots.concatenate(actions[6])
-        self.robot.set_joint_positions(positions=joint_rots)
         return
 
     def get_observations(self):
@@ -179,9 +174,34 @@ class PackTask(BaseTask):
         img_depth = frame['distance_to_image_plane'] # = [[depth]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
         img_seg = frame['instance_id_segmentation'] # = [[img_seg]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
         return map(lambda rows, i: map(lambda pixel, j: [*pixel[0:3], img_depth[i][j], img_seg[i][j]], np.ndenumerate(rows)), np.ndenumerate(img_rgba))
+    
+    def pre_physics_step(self, actions) -> None:
+        # print(actions)
+        # Rotate Joints
+        joint_rots = self.robot.get_joint_positions()
+        joint_rots += np.array(actions[0:6]) * math.pi / 180 # NN uses deg and isaac rads
+        self.robot.set_joint_positions(positions=joint_rots)
+        # Open or close Gripper
+        gripper = self.robot.gripper
+        if (actions[6] < 0):
+            gripper.close()
+        else:
+            gripper.open()
+        return
 
+    # Calculate Rewards
     def calculate_metrics(self) -> None:
-        return 0
+        gripper = self.robot.gripper
+        gripper_pos = gripper.get_world_pose()[0]
+        gripper_to_start = np.linalg.norm(PARTS_SOURCE - gripper_pos)
+        gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
+        
+        # Move Camera
+        curr_cam_pos = self.__camera.get_world_pose()[0]
+        new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
+        if new_cam_pose != curr_cam_pos:
+            self.__moveCamera(new_cam_pose, ROBOT_POS)
+        return reward.item()
 
     def is_done(self) -> None:
         return False
