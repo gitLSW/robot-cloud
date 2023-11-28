@@ -75,15 +75,17 @@ class PackTask(BaseTask):
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
-        # We need 7 image dimensions: for rgb (=>3), depth (black/white=>1), image_segmentation (=rgb=>3)
-        self.observation_space = spaces.Tuple(
-            spaces.Box(low=0, high=255, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7)),
-            # Robot Joints or Gripper Orient and pos missing
-        )
+        # We need 7 image dimensions: for rgb (=>3), depth (black/white=>1), image_segmentation (=rgb=>1)
+        self.observation_space = spaces.Tuple([
+            spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
+            spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-5m to 0-1)
+            spaces.Discrete(3) # segmentation using 1 Hot encoding in 4 Groups
+        ])
+        # Robot Joints or Gripper Orient and pos missing
 
         # The NN outputs the change in rotation for each joint
         joint_rot_max = 190 / sim_s_step_freq
-        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(1,))
+        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float)
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -104,12 +106,17 @@ class PackTask(BaseTask):
         scene.add_default_ground_plane()
 
         create_prim(prim_path=START_TABLE_PATH, prim_type="Xform",
+                    semantic_label='StartTable',
+                    semantic_type='Start',
                     position=START_TABLE_POS,
                     scale=[0.5, 1, 0.5])
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         add_reference_to_stage(local_assets + '/table_low.usd', START_TABLE_PATH)
 
-        create_prim(prim_path=DEST_BOX_PATH, prim_type="Xform", position=DEST_BOX_POS)
+        create_prim(prim_path=DEST_BOX_PATH, prim_type="Xform",
+                    semantic_label='DestBox',
+                    semantic_type='Dest',
+                    position=DEST_BOX_POS)
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         add_reference_to_stage(local_assets + '/SM_CardBoxA_02.usd', DEST_BOX_PATH)
         # self._box = XFormPrim(prim_path=DEST_BOX_PATH)
@@ -117,13 +124,13 @@ class PackTask(BaseTask):
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
-        self.robot = UR10(prim_path=ROBOT_PATH, name='UR10e', usd_path=local_assets + '/ur10e.usd', position=ROBOT_POS, attach_gripper=True)
+        self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', usd_path=local_assets + '/ur16e.usd', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         for i in range(5):
             scene.add(objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
                                          position=PARTS_SOURCE,
-                                         scale=[1, 1, 1]))
+                                         scale=[0.1, 0.1, 0.1]))
 
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
@@ -165,10 +172,37 @@ class PackTask(BaseTask):
     def get_observations(self):
         frame = self.__camera.get_current_frame()
         # print('Camera Image Options: ', frame.keys())
-        img_rgba = frame['rgba'] # = [[[r, g, b, a]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
-        img_depth = frame['distance_to_image_plane'] # = [[depth]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
-        img_seg = frame['instance_id_segmentation'] # = [[img_seg]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
-        return map(lambda rows, i: map(lambda pixel, j: [*pixel[0:3], img_depth[i][j], img_seg[i][j]], np.ndenumerate(rows)), np.ndenumerate(img_rgba))
+        img_rgba = frame['rgba'] # = [[[ 0<= r, g, b, a <= 255 ]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4 
+        img_depth = frame['distance_to_image_plane'] # = [[ 0 <= depth <= infinity ]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
+        img_seg_dict = frame['instance_id_segmentation']
+
+        one_hot_img_seg = np.zeros(IMG_RESOLUTION)
+        if img_seg_dict:
+            img_seg_info_dict = img_seg_dict['info']
+            img_seg = img_seg_dict['data'] # = [[ 0 <= img_seg <= 0 ]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
+
+            def seg_label_filter(pixel_label):
+                pixel_obj_path = img_seg[pixel_label]
+                if pixel_obj_path == ROBOT_PATH:
+                    return 1
+                elif pixel_obj_path == PARTS_PATH:
+                    return 2
+                elif pixel_obj_path == DEST_BOX_PATH:
+                    return 3
+                else:
+                    return 0
+                
+            seg_obj_classes_count = 4
+            one_hot_img_seg = map(lambda rows: map(seg_label_filter, rows), img_seg).reshape(-1)
+            one_hot_img_seg = np.eye(seg_obj_classes_count)[one_hot_img_seg]
+
+        print(one_hot_img_seg)
+
+        return (
+            map(lambda rows: map(lambda pixel: [np.array([*pixel[0:3]]) / 255], rows), img_rgba),
+            map(lambda rows: map(lambda pixel: pixel / 5, rows), img_depth) if img_depth else np.ones(IMG_RESOLUTION),
+            one_hot_img_seg
+        )
     
     def pre_physics_step(self, actions) -> None:
         # print(actions)
