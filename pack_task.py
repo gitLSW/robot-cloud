@@ -56,17 +56,18 @@ class PackTask(BaseTask):
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
-        # We need 7 image dimensions: for rgb (=>3), depth (black/white=>1), image_segmentation (=rgb=>1)
-        self.observation_space = spaces.Tuple([
-            spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
-            spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-5m to 0-1)
-            spaces.Discrete(3) # segmentation using 1 Hot encoding in 4 Groups
-        ])
-        # Robot Joints or Gripper Orient and pos missing
+        self.observation_space = spaces.Dict({
+            'rgb': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
+            'depth': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-2m to 0-1)
+            'seg': spaces.Discrete(4) # segmentation using one-hot encoding in 4 Groups
+        })
 
         # The NN outputs the change in rotation for each joint
         joint_rot_max = 190 / sim_s_step_freq
-        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float)
+        self.action_space = spaces.Dict({
+            'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
+            'gripper_open': spaces.Discrete(2) # Gripper is open = 1, else 0
+        })
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -159,7 +160,7 @@ class PackTask(BaseTask):
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
-        self.robot.set_joint_positions(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
         return
 
     def get_observations(self):
@@ -185,16 +186,15 @@ class PackTask(BaseTask):
                 else:
                     return 0
                 
-            seg_obj_classes_count = 4
             one_hot_img_seg = map(lambda rows: map(seg_label_filter, rows), img_seg).reshape(-1)
-        one_hot_img_seg = np.eye(seg_obj_classes_count)[one_hot_img_seg]
+            one_hot_img_seg = np.eye(4)[one_hot_img_seg] # We have 4 seg_obj_classes
 
         # TODO: Check if this is correct
         print(one_hot_img_seg)
 
         return (
             map(lambda rows: map(lambda pixel: [np.array([*pixel[0:3]]) / 255], rows), img_rgba),
-            map(lambda rows: map(lambda pixel: pixel / 5, rows), img_depth) if img_depth else np.ones(IMG_RESOLUTION),
+            map(lambda rows: map(lambda pixel: pixel / 2 if pixel < 2 else 1, rows), img_depth) if img_depth else np.ones(IMG_RESOLUTION), # Normalized between 0-1 using max distance of 2m
             one_hot_img_seg
         )
     

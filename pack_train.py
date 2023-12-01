@@ -43,12 +43,12 @@ env = VecEnvBase(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaa
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack")
 env.set_task(task, backend="numpy")
-env.obs_space = task.observation_space
-env.act_space = task.action_space
-
-env = dreamerv3.wrap_env(env, config)
-env = embodied.BatchEnv([env], parallel=False)
 env.reset()
+
+from embodied.envs import from_gym
+env = from_gym.FromGym(env, obs_key='image')
+env = dreamerv3.wrap_env(env, config)
+# env = embodied.BatchEnv([env], parallel=False)
 
 print('Starting Training...')
 
