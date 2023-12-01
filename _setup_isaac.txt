@@ -35,6 +35,8 @@ Convenience:
 Info:
  - Isaac Defult Location:
    open ~/.local/share/ov/pkg/isaac_sim-2023.1.0
+ - Isaac Kit: ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/exts
+ - Isaac Omni Extensions: ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/exts
  - Log Location:
    open ~/.local/share/ov/pkg/isaac_sim-2023.1.0/kit/logs/Kit/Isaac-Sim/2023.1/
  - Isaac Assets Import

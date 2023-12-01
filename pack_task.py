@@ -1,34 +1,15 @@
-# Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
-#
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto. Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-#
-
 import os
 import math
 import numpy as np
-import torch
-
 from gymnasium import spaces
 
-from scipy.spatial.transform import Rotation as R
-
-# from camera import VideoFeed
 from omni.isaac.sensor import Camera
 from omni.isaac.core.utils.extensions import enable_extension
 # enable_extension("omni.importer.urdf")
-
 enable_extension("omni.isaac.universal_robots")
 # from omni.importer.urdf import _urdf
 from omni.isaac.universal_robots.ur10 import UR10
 # from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
-
-# from omni.isaac.core.prims import XFormPrim
-# from omni.isaac.core.articulations import ArticulationView, Articulation
-# from omni.isaac.core.prims.xform_prim import XFormPrim
 
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.gym.tasks.rl_task import RLTaskInterface
@@ -159,6 +140,18 @@ class PackTask(BaseTask):
         quat = [dot + 1, *rot_axis]
         # orient = rot_utils.euler_angles_to_quats([0, 45, 0], degrees=True)
         self.__camera.set_world_pose(position=position, orientation=quat)
+
+        # From ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/exts/omni.kit.viewport.utility/omni/kit/viewport/utility/camera_state.py
+        # parent_xform = usd_camera.ComputeParentToWorldTransform(self.__time)
+        # iparent_xform = parent_xform.GetInverse()
+        # initial_local_xform = world_xform * iparent_xform
+        # pos_in_parent = iparent_xform.Transform(world_position)
+        #         
+        # cam_up = self.get_world_camera_up(cam_prim.GetStage())
+        # coi_in_parent = iparent_xform.Transform(world_target)
+        # new_local_transform = Gf.Matrix4d(1).SetLookAt(pos_in_parent, coi_in_parent, cam_up).GetInverse()
+        # new_local_coi = (new_local_transform * parent_xform).GetInverse().Transform(world_target)
+
         return
 
     def reset(self, env_ids=None):
@@ -172,7 +165,7 @@ class PackTask(BaseTask):
     def get_observations(self):
         frame = self.__camera.get_current_frame()
         # print('Camera Image Options: ', frame.keys())
-        img_rgba = frame['rgba'] # = [[[ 0<= r, g, b, a <= 255 ]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4 
+        img_rgba = frame['rgba'] # = [[[ 0 <= r, g, b, a <= 255 ]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4 
         img_depth = frame['distance_to_image_plane'] # = [[ 0 <= depth <= infinity ]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
         img_seg_dict = frame['instance_id_segmentation']
 
@@ -194,8 +187,9 @@ class PackTask(BaseTask):
                 
             seg_obj_classes_count = 4
             one_hot_img_seg = map(lambda rows: map(seg_label_filter, rows), img_seg).reshape(-1)
-            one_hot_img_seg = np.eye(seg_obj_classes_count)[one_hot_img_seg]
+        one_hot_img_seg = np.eye(seg_obj_classes_count)[one_hot_img_seg]
 
+        # TODO: Check if this is correct
         print(one_hot_img_seg)
 
         return (

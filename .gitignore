@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 tutorials
+dreamerv3
 
 # C extensions
 *.so
