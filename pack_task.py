@@ -56,7 +56,7 @@ class PackTask(BaseTask):
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
-        self.observation_space = spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7))
+        self.observation_space = spaces.Box(low=0, high=1, shape=(*IMG_RESOLUTION, 7))
         # self.observation_space = spaces.Dict({
         #     'rgb': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
         #     'depth': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-2m to 0-1)
@@ -199,9 +199,7 @@ class PackTask(BaseTask):
                     one_hot_img_seg[:, :, 2] = mask
                 # Keine Aktion für 'sonstige', da diese implizit als 0 in allen Kanälen bleiben
 
-        x = np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
-        print('HERE', x.shape)
-        return x
+        return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
     
     def pre_physics_step(self, actions) -> None:
         # print(actions)
