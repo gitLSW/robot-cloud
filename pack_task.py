@@ -56,18 +56,20 @@ class PackTask(BaseTask):
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
-        self.observation_space = spaces.Dict({
-            'rgb': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
-            'depth': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-2m to 0-1)
-            'seg': spaces.Discrete(4) # segmentation using one-hot encoding in 4 Groups
-        })
+        self.observation_space = spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 7))
+        # self.observation_space = spaces.Dict({
+        #     'rgb': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
+        #     'depth': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-2m to 0-1)
+        #     'seg': spaces.Discrete(4) # segmentation using one-hot encoding in 4 Groups
+        # })
 
         # The NN outputs the change in rotation for each joint
         joint_rot_max = 190 / sim_s_step_freq
-        self.action_space = spaces.Dict({
-            'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
-            'gripper_open': spaces.Discrete(2) # Gripper is open = 1, else 0
-        })
+        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(7,), dtype=float)
+        # spaces.Dict({
+        #     'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
+        #     'gripper_open': spaces.Discrete(2) # Gripper is open = 1, else 0
+        # })
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -162,41 +164,44 @@ class PackTask(BaseTask):
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
         self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
         return
+    
 
     def get_observations(self):
         frame = self.__camera.get_current_frame()
-        # print('Camera Image Options: ', frame.keys())
-        img_rgba = frame['rgba'] # = [[[ 0 <= r, g, b, a <= 255 ]]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4 
-        img_depth = frame['distance_to_image_plane'] # = [[ 0 <= depth <= infinity ]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]
+
+        img_rgba = frame['rgba']  # Shape: (Width, Height, 4)
+        img_rgb = img_rgba[:, :, :3] / 255.0 # Remove alpha from rgba and scale between 0-1
+
+        img_depth = frame['distance_to_image_plane']  # Shape: (Width, Height)
+        if img_depth:
+            img_depth = np.clip(img_depth, 0, 2) / 2.0 # Clip depth at 2m and scale between 0-1
+            img_depth = img_depth[:, :, np.newaxis]
+            img_depth = np.expand_dims(img_depth, axis=-1)
+        else:
+            img_depth = np.zeros((*IMG_RESOLUTION, 1))
+
+        # Segmentation
         img_seg_dict = frame['instance_id_segmentation']
+        one_hot_img_seg = img_seg = np.zeros((*IMG_RESOLUTION, 3))
 
-        one_hot_img_seg = np.zeros(IMG_RESOLUTION)
         if img_seg_dict:
-            img_seg_info_dict = img_seg_dict['info']
-            img_seg = img_seg_dict['data'] # = [[ 0 <= img_seg <= 0 ]] of size IMG_RESOLUTION[0]xIMG_RESOLUTION[1]x4
+            img_seg_info_dict = img_seg_dict['info'] # Dict: [pixel label: prim path]
+            img_seg = img_seg_dict['data']  # Shape: (Width, Height)
+            
+            # Vektorisierte One-Hot-Codierung
+            for label, path in img_seg_info_dict.items():
+                mask = (img_seg == label)
+                if path == ROBOT_PATH:
+                    one_hot_img_seg[:, :, 0] = mask
+                elif path == PARTS_PATH:
+                    one_hot_img_seg[:, :, 1] = mask
+                elif path == DEST_BOX_PATH:
+                    one_hot_img_seg[:, :, 2] = mask
+                # Keine Aktion für 'sonstige', da diese implizit als 0 in allen Kanälen bleiben
 
-            def seg_label_filter(pixel_label):
-                pixel_obj_path = img_seg[pixel_label]
-                if pixel_obj_path == ROBOT_PATH:
-                    return 1
-                elif pixel_obj_path == PARTS_PATH:
-                    return 2
-                elif pixel_obj_path == DEST_BOX_PATH:
-                    return 3
-                else:
-                    return 0
-                
-            one_hot_img_seg = map(lambda rows: map(seg_label_filter, rows), img_seg).reshape(-1)
-            one_hot_img_seg = np.eye(4)[one_hot_img_seg] # We have 4 seg_obj_classes
-
-        # TODO: Check if this is correct
-        print(one_hot_img_seg)
-
-        return (
-            map(lambda rows: map(lambda pixel: [np.array([*pixel[0:3]]) / 255], rows), img_rgba),
-            map(lambda rows: map(lambda pixel: pixel / 2 if pixel < 2 else 1, rows), img_depth) if img_depth else np.ones(IMG_RESOLUTION), # Normalized between 0-1 using max distance of 2m
-            one_hot_img_seg
-        )
+        x = np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
+        print('HERE', x.shape)
+        return x
     
     def pre_physics_step(self, actions) -> None:
         # print(actions)

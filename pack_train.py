@@ -1,6 +1,7 @@
 import os
 import dreamerv3
 from dreamerv3 import embodied
+from embodied.envs import from_gym
 from omni.isaac.gym.vec_env import VecEnvBase
 
 name = "monster_model"
@@ -43,15 +44,16 @@ env = VecEnvBase(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaa
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack")
 env.set_task(task, backend="numpy")
-env.reset()
+# env.reset()
 
-from embodied.envs import from_gym
 env = from_gym.FromGym(env, obs_key='image')
 env = dreamerv3.wrap_env(env, config)
-# env = embodied.BatchEnv([env], parallel=False)
+env = embodied.BatchEnv([env], parallel=False)
 
 print('Starting Training...')
 
+# env.act_space.discrete = True
+# act_space = { 'action': env.act_space }
 agent = dreamerv3.Agent(env.obs_space, env.act_space, step, config)
 replay = embodied.replay.Uniform(config.batch_length, config.replay_size, logdir / 'replay')
 args = embodied.Config(**config.run, logdir=config.logdir, batch_steps=config.batch_size * config.batch_length)
