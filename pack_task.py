@@ -64,7 +64,7 @@ class PackTask(BaseTask):
         # })
 
         # The NN outputs the change in rotation for each joint
-        joint_rot_max = 190 / sim_s_step_freq
+        joint_rot_max = 190.0 / sim_s_step_freq
         self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(7,), dtype=float)
         # spaces.Dict({
         #     'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
@@ -154,17 +154,15 @@ class PackTask(BaseTask):
         # coi_in_parent = iparent_xform.Transform(world_target)
         # new_local_transform = Gf.Matrix4d(1).SetLookAt(pos_in_parent, coi_in_parent, cam_up).GetInverse()
         # new_local_coi = (new_local_transform * parent_xform).GetInverse().Transform(world_target)
+        
 
-        return
-
-    def reset(self, env_ids=None):
+    def reset(self):
         self.robot.initialize()
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
         self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-        return
-    
+        # return np.zeros((*IMG_RESOLUTION, 7))
 
     def get_observations(self):
         frame = self.__camera.get_current_frame()
@@ -173,10 +171,10 @@ class PackTask(BaseTask):
         img_rgb = img_rgba[:, :, :3] / 255.0 # Remove alpha from rgba and scale between 0-1
 
         img_depth = frame['distance_to_image_plane']  # Shape: (Width, Height)
-        if img_depth:
+        if img_depth is not None:
             img_depth = np.clip(img_depth, 0, 2) / 2.0 # Clip depth at 2m and scale between 0-1
             img_depth = img_depth[:, :, np.newaxis]
-            img_depth = np.expand_dims(img_depth, axis=-1)
+            # img_depth = np.expand_dims(img_depth, axis=-1)
         else:
             img_depth = np.zeros((*IMG_RESOLUTION, 1))
 
@@ -188,7 +186,7 @@ class PackTask(BaseTask):
             img_seg_info_dict = img_seg_dict['info'] # Dict: [pixel label: prim path]
             img_seg = img_seg_dict['data']  # Shape: (Width, Height)
             
-            # Vektorisierte One-Hot-Codierung
+            # Vectorised One-Hot-Encoding
             for label, path in img_seg_info_dict.items():
                 mask = (img_seg == label)
                 if path == ROBOT_PATH:
@@ -197,7 +195,6 @@ class PackTask(BaseTask):
                     one_hot_img_seg[:, :, 1] = mask
                 elif path == DEST_BOX_PATH:
                     one_hot_img_seg[:, :, 2] = mask
-                # Keine Aktion für 'sonstige', da diese implizit als 0 in allen Kanälen bleiben
 
         return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
     
@@ -216,7 +213,6 @@ class PackTask(BaseTask):
                 gripper.open()
             else:
                 gripper.close()
-        return
 
     # Calculate Rewards
     def calculate_metrics(self) -> None:
@@ -230,7 +226,8 @@ class PackTask(BaseTask):
         # new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
         # if not np.array_equal(new_cam_pose, curr_cam_pos):
         #     self.__moveCamera(new_cam_pose, ROBOT_POS)
-        return -gripper_to_dest
+        done = False
+        return -gripper_to_dest, done, {}
 
     def is_done(self) -> None:
         return False
