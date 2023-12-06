@@ -11,15 +11,19 @@ enable_extension("omni.isaac.universal_robots")
 from omni.isaac.universal_robots.ur10 import UR10
 # from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
 
+from omni.isaac.core.prims import XFormPrim, RigidPrim, GeometryPrim
+from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.gym.tasks.rl_task import RLTaskInterface
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.viewports import set_camera_view
 from omni.kit.viewport.utility import get_active_viewport
 import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
+from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
+
+from pxr import Usd, UsdGeom, UsdPhysics, Sdf, Gf, Tf
 
 ENV_PATH = "/World/Env"
 
@@ -41,6 +45,8 @@ CAMERA_POS_DEST = [4, 4, 2.5]
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
+    parts = []
+
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
     Args:
@@ -52,7 +58,7 @@ class PackTask(BaseTask):
         # self._num_actions = 1
         self._device = "cpu"
         self.num_envs = 1
-        self.sim_s_step_freq = sim_s_step_freq
+        self.__joint_rot_max = (190.0 * math.pi / 180) / sim_s_step_freq
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
@@ -63,9 +69,8 @@ class PackTask(BaseTask):
         #     'seg': spaces.Discrete(4) # segmentation using one-hot encoding in 4 Groups
         # })
 
-        # The NN outputs the change in rotation for each joint
-        joint_rot_max = 190.0 / sim_s_step_freq
-        self.action_space = spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(7,), dtype=float)
+        # The NN outputs the change in rotation for each joint as a fraction of the max rot speed per timestep (=__joint_rot_max)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float)
         # spaces.Dict({
         #     'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
         #     'gripper_open': spaces.Discrete(2) # Gripper is open = 1, else 0
@@ -83,27 +88,24 @@ class PackTask(BaseTask):
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
         # assets_root_path = get_assets_root_path()
 
-        # create_prim(prim_path=ENV_PATH, prim_type="Xform", position=[0, 0, 0])
+        # _ = XFormPrim(prim_path=ENV_PATH, position=[0, 0, 0])
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
         # add_reference_to_stage(warehouse_path, ROBOT_PATH)
         
         scene.add_default_ground_plane()
 
-        create_prim(prim_path=START_TABLE_PATH, prim_type="Xform",
-                    semantic_label='StartTable',
-                    semantic_type='Start',
-                    position=START_TABLE_POS,
-                    scale=[0.5, 1, 0.5])
-        # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
-        add_reference_to_stage(local_assets + '/table_low.usd', START_TABLE_PATH)
+        # table_path = get_assets_root_path() + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        table_path = local_assets + '/table_low.usd'
+        self.table = create_prim(prim_path=START_TABLE_PATH, usd_path=table_path, position=START_TABLE_POS, scale=[0.5, 1, 0.5])
+        # add_reference_to_stage(table_path, START_TABLE_PATH)
+        self.table = RigidPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS)
+        self.table.enable_rigid_body_physics()
+        scene.add(self.table)
 
-        create_prim(prim_path=DEST_BOX_PATH, prim_type="Xform",
-                    semantic_label='DestBox',
-                    semantic_type='Dest',
-                    position=DEST_BOX_POS)
-        # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
-        add_reference_to_stage(local_assets + '/SM_CardBoxA_02.usd', DEST_BOX_PATH)
-        # self._box = XFormPrim(prim_path=DEST_BOX_PATH)
+        # box_path = get_assets_root_path() + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
+        box_path = local_assets + '/SM_CardBoxA_02.usd'
+        self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS)
+        add_reference_to_stage(box_path, DEST_BOX_PATH)
 
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
@@ -112,9 +114,13 @@ class PackTask(BaseTask):
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         for i in range(5):
-            scene.add(objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
+            part = objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
                                          position=PARTS_SOURCE,
-                                         scale=[0.1, 0.1, 0.1]))
+                                         scale=[0.1, 0.1, 0.1])
+            # part.set_default_state(position=PARTS_SOURCE)
+            scene.add(part)
+            self.parts.append(part)
+
 
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
@@ -133,30 +139,16 @@ class PackTask(BaseTask):
         # set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
     
     def __moveCamera(self, position, target):
-        pos = np.array(position)
-        target = np.array(target)
-        dir_vec = target - pos
-        dir_vec = dir_vec / np.linalg.norm(dir_vec)
-        forwards = np.array([1, 0, 0])
-        rot_axis = np.cross(forwards, dir_vec)
-        dot = np.dot(forwards, dir_vec)
-        quat = [dot + 1, *rot_axis]
-        # orient = rot_utils.euler_angles_to_quats([0, 45, 0], degrees=True)
-        self.__camera.set_world_pose(position=position, orientation=quat)
-
-        # From ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/exts/omni.kit.viewport.utility/omni/kit/viewport/utility/camera_state.py
-        # parent_xform = usd_camera.ComputeParentToWorldTransform(self.__time)
-        # iparent_xform = parent_xform.GetInverse()
-        # initial_local_xform = world_xform * iparent_xform
-        # pos_in_parent = iparent_xform.Transform(world_position)
-        #         
-        # cam_up = self.get_world_camera_up(cam_prim.GetStage())
-        # coi_in_parent = iparent_xform.Transform(world_target)
-        # new_local_transform = Gf.Matrix4d(1).SetLookAt(pos_in_parent, coi_in_parent, cam_up).GetInverse()
-        # new_local_coi = (new_local_transform * parent_xform).GetInverse().Transform(world_target)
+        # USD Frame flips target and position, so they have to be flipped here
+        quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
+                                                   target=Gf.Vec3f(*position),
+                                                   up=Gf.Vec3f(0, 0, 1)))
+        self.__camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
         
 
     def reset(self):
+        self.table.initialize()
+        self.box.initialize()
         self.robot.initialize()
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
@@ -199,10 +191,9 @@ class PackTask(BaseTask):
         return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
     
     def pre_physics_step(self, actions) -> None:
-        # print(actions)
         # Rotate Joints
         joint_rots = self.robot.get_joint_positions()
-        joint_rots += np.array(actions[0:6]) * math.pi / 180 # NN uses deg and isaac rads
+        joint_rots += np.array(actions[0:6]) * self.__joint_rot_max # NN uses deg and isaac rads
         self.robot.set_joint_positions(positions=joint_rots)
         # Open or close Gripper
         gripper = self.robot.gripper
