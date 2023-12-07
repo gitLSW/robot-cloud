@@ -23,25 +23,25 @@ import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
 
-from pxr import Usd, UsdGeom, UsdPhysics, Sdf, Gf, Tf
+from pxr import Gf
 
 ENV_PATH = "/World/Env"
 
 ROBOT_PATH = '/World/UR10e'
-ROBOT_POS = [0, 0, 0]
+ROBOT_POS = np.array([0, 0, 0])
 # 5.45, 3, 0
 START_TABLE_PATH = "/World/StartTable"
-START_TABLE_POS = [0.36, 1.29, 0]
+START_TABLE_POS = np.array([0.36, 1.29, 0])
 
 DEST_BOX_PATH = "/World/DestinationBox"
-DEST_BOX_POS = [2, -2, 0]
+DEST_BOX_POS = np.array([0.6, -0.64, 0])
 
 PARTS_PATH = '/World/Parts'
-PARTS_SOURCE = np.array(START_TABLE_POS) + np.array([0, 0, 3])
+PARTS_SOURCE = START_TABLE_POS + np.array([0, 0, 3])
 
 CAMERA_PATH = '/World/Camera' 
-CAMERA_POS_START = [3, -3, 2.5] 
-CAMERA_POS_DEST = [4, 4, 2.5]
+CAMERA_POS_START = np.array([3, -3, 2.5])
+CAMERA_POS_DEST = np.array([4, 4, 2.5])
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -88,21 +88,21 @@ class PackTask(BaseTask):
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
         # assets_root_path = get_assets_root_path()
 
-        # _ = XFormPrim(prim_path=ENV_PATH, position=[0, 0, 0])
+        # _ = XFormPrim(prim_path=ENV_PATH, position=-np.array([5, 4.5, 0]))
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
-        # add_reference_to_stage(warehouse_path, ROBOT_PATH)
+        # add_reference_to_stage(warehouse_path, ENV_PATH)
         
-        scene.add_default_ground_plane()
+        # scene.add_default_ground_plane()
 
-        # table_path = get_assets_root_path() + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
         self.table = create_prim(prim_path=START_TABLE_PATH, usd_path=table_path, position=START_TABLE_POS, scale=[0.5, 1, 0.5])
-        # add_reference_to_stage(table_path, START_TABLE_PATH)
-        self.table = RigidPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS)
-        self.table.enable_rigid_body_physics()
-        scene.add(self.table)
+        add_reference_to_stage(table_path, START_TABLE_PATH)
+        # self.table = RigidPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS)
+        # self.table.enable_rigid_body_physics()
+        # scene.add(self.table)
 
-        # box_path = get_assets_root_path() + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
+        # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
         self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS)
         add_reference_to_stage(box_path, DEST_BOX_PATH)
@@ -131,12 +131,14 @@ class PackTask(BaseTask):
         )
         # self.__camera.set_focus_distance(40)
 
-        self.__moveCamera(position=CAMERA_POS_START, target=ROBOT_POS)
+        self.__moveCamera(position=CAMERA_POS_START, target=START_TABLE_POS)
 
-        viewport = get_active_viewport()
-        viewport.set_active_camera(CAMERA_PATH)
+        # viewport = get_active_viewport()
+        # viewport.set_active_camera(CAMERA_PATH)
 
-        # set_camera_view(eye=[7, 9, 3], target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
+        set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
+
+        self._move_task_objects_to_their_frame()
     
     def __moveCamera(self, position, target):
         # USD Frame flips target and position, so they have to be flipped here
@@ -147,7 +149,7 @@ class PackTask(BaseTask):
         
 
     def reset(self):
-        self.table.initialize()
+        # self.table.initialize()
         self.box.initialize()
         self.robot.initialize()
         self.__camera.initialize()
@@ -187,7 +189,6 @@ class PackTask(BaseTask):
                     one_hot_img_seg[:, :, 1] = mask
                 elif path == DEST_BOX_PATH:
                     one_hot_img_seg[:, :, 2] = mask
-
         return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
     
     def pre_physics_step(self, actions) -> None:
@@ -216,7 +217,8 @@ class PackTask(BaseTask):
         # curr_cam_pos = self.__camera.get_world_pose()[0]
         # new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
         # if not np.array_equal(new_cam_pose, curr_cam_pos):
-        #     self.__moveCamera(new_cam_pose, ROBOT_POS)
+        #     cam_target = DEST_BOX_POS if (gripper_to_dest < gripper_to_start) else START_TABLE_POS
+        #     self.__moveCamera(new_cam_pose, cam_target)
         done = False
         return -gripper_to_dest, done, {}
 
