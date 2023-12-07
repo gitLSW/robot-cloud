@@ -46,14 +46,14 @@ ROBOT_POS = np.array([0.0, 0.0, 0.0])
 # 5.45, 3, 0
 START_TABLE_PATH = "/World/StartTable"
 START_TABLE_POS = np.array([0.36, 0.8, 0])
-START_TABLE_HEIGHT = 0.7
+START_TABLE_HEIGHT = 0.6
+START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, START_TABLE_HEIGHT])
 
 DEST_BOX_PATH = "/World/DestinationBox"
-DEST_BOX_POS = np.array([0.6, -0.6, 0])
+DEST_BOX_POS = np.array([0, -0.65, 0])
 
 PARTS_PATH = '/World/Parts'
-PARTS_SOURCE = START_TABLE_POS + np.array([0, 0, 3])
-START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, START_TABLE_HEIGHT])
+PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 1])
 
 CAMERA_PATH = '/World/Camera' 
 CAMERA_POS_START = np.array([-2, 2, 2.5])
@@ -121,7 +121,7 @@ class PackTask(BaseTask):
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
-        self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS)
+        self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS, scale=[1, 1, 0.4])
         add_reference_to_stage(box_path, DEST_BOX_PATH)
         setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True)
 
@@ -170,7 +170,7 @@ class PackTask(BaseTask):
 
     def reset(self):
         # self.table.initialize()
-        self.box.initialize()
+        # self.box.initialize()
         self.robot.initialize()
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
@@ -222,14 +222,12 @@ class PackTask(BaseTask):
         self.robot.set_joint_positions(positions=joint_rots)
         # Open or close Gripper
         gripper = self.robot.gripper
-        curr_gripper_state = gripper.is_closed()
-        new_gripper_state = actions[6]
-        if (new_gripper_state != curr_gripper_state):
-            if (new_gripper_state == 1):
-                gripper.open()
-            else:
-                gripper.close()
-
+        is_closed = gripper.is_closed()
+        gripper_action = actions[6]
+        if 0.9 < gripper_action and is_closed:
+            gripper.open()
+        elif gripper_action < -0.9 and not is_closed:
+            gripper.close()
 
 
     # Calculate Rewards
