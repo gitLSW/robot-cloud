@@ -38,10 +38,11 @@ DEST_BOX_POS = np.array([0.6, -0.64, 0])
 
 PARTS_PATH = '/World/Parts'
 PARTS_SOURCE = START_TABLE_POS + np.array([0, 0, 3])
+START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, 1])
 
 CAMERA_PATH = '/World/Camera' 
-CAMERA_POS_START = np.array([3, -3, 2.5])
-CAMERA_POS_DEST = np.array([4, 4, 2.5])
+CAMERA_POS_START = np.array([4, 4, 2.5])
+CAMERA_POS_DEST = np.array([3, -3, 2.5])
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -79,6 +80,8 @@ class PackTask(BaseTask):
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
 
+
+
     def set_up_scene(self, scene) -> None:
         super().set_up_scene(scene)
 
@@ -110,7 +113,7 @@ class PackTask(BaseTask):
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
-        self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', usd_path=local_assets + '/ur16e.usd', position=ROBOT_POS, attach_gripper=True)
+        self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         for i in range(5):
@@ -121,7 +124,6 @@ class PackTask(BaseTask):
             scene.add(part)
             self.parts.append(part)
 
-
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
             frequency=20,
@@ -129,9 +131,10 @@ class PackTask(BaseTask):
             # position=torch.tensor(CAMERA_POS_START),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
-        # self.__camera.set_focus_distance(40)
+        print(self.__camera.get_focal_length())
+        self.__camera.set_focal_length(2.0)
 
-        self.__moveCamera(position=CAMERA_POS_START, target=START_TABLE_POS)
+        self.__moveCamera(position=CAMERA_POS_START, target=START_TABLE_CENTER)
 
         viewport = get_active_viewport()
         viewport.set_active_camera(CAMERA_PATH)
@@ -140,12 +143,15 @@ class PackTask(BaseTask):
 
         self._move_task_objects_to_their_frame()
     
+
+
     def __moveCamera(self, position, target):
         # USD Frame flips target and position, so they have to be flipped here
         quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
                                                    target=Gf.Vec3f(*position),
                                                    up=Gf.Vec3f(0, 0, 1)))
         self.__camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
+    
         
 
     def reset(self):
@@ -157,6 +163,8 @@ class PackTask(BaseTask):
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
         self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
         # return np.zeros((*IMG_RESOLUTION, 7))
+
+
 
     def get_observations(self):
         frame = self.__camera.get_current_frame()
@@ -190,7 +198,9 @@ class PackTask(BaseTask):
                 elif path == DEST_BOX_PATH:
                     one_hot_img_seg[:, :, 2] = mask
         return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
-    
+
+
+
     def pre_physics_step(self, actions) -> None:
         # Rotate Joints
         joint_rots = self.robot.get_joint_positions()
@@ -206,21 +216,26 @@ class PackTask(BaseTask):
             else:
                 gripper.close()
 
+
+
     # Calculate Rewards
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
-        gripper_to_start = np.linalg.norm(PARTS_SOURCE - gripper_pos)
+        gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
         gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         
         # Move Camera
-        # curr_cam_pos = self.__camera.get_world_pose()[0]
-        # new_cam_pose = CAMERA_POS_DEST if (gripper_to_dest < gripper_to_start) else CAMERA_POS_START
-        # if not np.array_equal(new_cam_pose, curr_cam_pos):
-        #     cam_target = DEST_BOX_POS if (gripper_to_dest < gripper_to_start) else START_TABLE_POS
-        #     self.__moveCamera(new_cam_pose, cam_target)
+        curr_cam_pos = self.__camera.get_world_pose()[0]
+        closer_to_dest = gripper_to_dest < gripper_to_start
+        new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
+        if not np.array_equal(new_cam_pose, curr_cam_pos):
+            cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
+            self.__moveCamera(new_cam_pose, cam_target)
         done = False
         return -gripper_to_dest, done, {}
+
+
 
     def is_done(self) -> None:
         return False
