@@ -28,7 +28,7 @@ from pxr import Gf
 ENV_PATH = "/World/Env"
 
 ROBOT_PATH = '/World/UR10e'
-ROBOT_POS = np.array([0, 0, 0])
+ROBOT_POS = np.array([0.0, 0.0, 0.0])
 # 5.45, 3, 0
 START_TABLE_PATH = "/World/StartTable"
 START_TABLE_POS = np.array([0.36, 1.29, 0])
@@ -41,8 +41,8 @@ PARTS_SOURCE = START_TABLE_POS + np.array([0, 0, 3])
 START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, 1])
 
 CAMERA_PATH = '/World/Camera' 
-CAMERA_POS_START = np.array([4, 4, 2.5])
-CAMERA_POS_DEST = np.array([3, -3, 2.5])
+CAMERA_POS_START = np.array([-2, 2, 2.5])
+CAMERA_POS_DEST = np.array([2, -2, 2.5])
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
@@ -134,7 +134,7 @@ class PackTask(BaseTask):
         print(self.__camera.get_focal_length())
         self.__camera.set_focal_length(2.0)
 
-        self.__moveCamera(position=CAMERA_POS_START, target=START_TABLE_CENTER)
+        self.__moveCamera(position=CAMERA_POS_START, target=ROBOT_POS)
 
         viewport = get_active_viewport()
         viewport.set_active_camera(CAMERA_PATH)
@@ -230,8 +230,8 @@ class PackTask(BaseTask):
         closer_to_dest = gripper_to_dest < gripper_to_start
         new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
         if not np.array_equal(new_cam_pose, curr_cam_pos):
-            cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
-            self.__moveCamera(new_cam_pose, cam_target)
+            # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
+            self.__moveCamera(new_cam_pose, ROBOT_POS)
         done = False
         return -gripper_to_dest, done, {}
 
