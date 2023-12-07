@@ -92,7 +92,7 @@ class PackTask(BaseTask):
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
         # add_reference_to_stage(warehouse_path, ENV_PATH)
         
-        # scene.add_default_ground_plane()
+        scene.add_default_ground_plane()
 
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
@@ -133,10 +133,10 @@ class PackTask(BaseTask):
 
         self.__moveCamera(position=CAMERA_POS_START, target=START_TABLE_POS)
 
-        # viewport = get_active_viewport()
-        # viewport.set_active_camera(CAMERA_PATH)
+        viewport = get_active_viewport()
+        viewport.set_active_camera(CAMERA_PATH)
 
-        set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
+        # set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
 
         self._move_task_objects_to_their_frame()
     
