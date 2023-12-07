@@ -22,6 +22,20 @@ from omni.kit.viewport.utility import get_active_viewport
 import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
+from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup
+
+
+# MESH_APPROXIMATIONS = {
+#         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
+#         "convexHull": PhysxSchema.PhysxConvexHullCollisionAPI,
+#         "convexDecomposition": PhysxSchema.PhysxConvexDecompositionCollisionAPI,
+#         "meshSimplification": PhysxSchema.PhysxTriangleMeshSimplificationCollisionAPI,
+#         "convexMeshSimplification": PhysxSchema.PhysxTriangleMeshSimplificationCollisionAPI,
+#         "boundingCube": None,
+#         "boundingSphere": None,
+#         "sphereFill": PhysxSchema.PhysxSphereFillCollisionAPI,
+#         "sdf": PhysxSchema.PhysxSDFMeshCollisionAPI,
+# }
 
 from pxr import Gf
 
@@ -31,14 +45,15 @@ ROBOT_PATH = '/World/UR10e'
 ROBOT_POS = np.array([0.0, 0.0, 0.0])
 # 5.45, 3, 0
 START_TABLE_PATH = "/World/StartTable"
-START_TABLE_POS = np.array([0.36, 1.29, 0])
+START_TABLE_POS = np.array([0.36, 0.8, 0])
+START_TABLE_HEIGHT = 0.7
 
 DEST_BOX_PATH = "/World/DestinationBox"
-DEST_BOX_POS = np.array([0.6, -0.64, 0])
+DEST_BOX_POS = np.array([0.6, -0.6, 0])
 
 PARTS_PATH = '/World/Parts'
 PARTS_SOURCE = START_TABLE_POS + np.array([0, 0, 3])
-START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, 1])
+START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, START_TABLE_HEIGHT])
 
 CAMERA_PATH = '/World/Camera' 
 CAMERA_POS_START = np.array([-2, 2, 2.5])
@@ -59,7 +74,8 @@ class PackTask(BaseTask):
         # self._num_actions = 1
         self._device = "cpu"
         self.num_envs = 1
-        self.__joint_rot_max = (190.0 * math.pi / 180) / sim_s_step_freq
+        # Robot turning ange of max speed is 191deg/s
+        self.__joint_rot_max = (191.0 * math.pi / 180) / sim_s_step_freq
 
         # The NN will see the Robot via a single video feed that can run from one of two camera positions
         # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
@@ -99,16 +115,15 @@ class PackTask(BaseTask):
 
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
-        self.table = create_prim(prim_path=START_TABLE_PATH, usd_path=table_path, position=START_TABLE_POS, scale=[0.5, 1, 0.5])
+        self.table = XFormPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
         add_reference_to_stage(table_path, START_TABLE_PATH)
-        # self.table = RigidPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS)
-        # self.table.enable_rigid_body_physics()
-        # scene.add(self.table)
+        setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True)
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
         self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS)
         add_reference_to_stage(box_path, DEST_BOX_PATH)
+        setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True)
 
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
@@ -131,7 +146,6 @@ class PackTask(BaseTask):
             # position=torch.tensor(CAMERA_POS_START),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
-        print(self.__camera.get_focal_length())
         self.__camera.set_focal_length(2.0)
 
         self.__moveCamera(position=CAMERA_POS_START, target=ROBOT_POS)
@@ -204,7 +218,7 @@ class PackTask(BaseTask):
     def pre_physics_step(self, actions) -> None:
         # Rotate Joints
         joint_rots = self.robot.get_joint_positions()
-        joint_rots += np.array(actions[0:6]) * self.__joint_rot_max # NN uses deg and isaac rads
+        joint_rots += np.array(actions[0:6]) * self.__joint_rot_max
         self.robot.set_joint_positions(positions=joint_rots)
         # Open or close Gripper
         gripper = self.robot.gripper
