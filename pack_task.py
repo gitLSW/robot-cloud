@@ -78,21 +78,16 @@ class PackTask(BaseTask):
         # Robot turning ange of max speed is 191deg/s
         self.__joint_rot_max = (191.0 * math.pi / 180) / sim_s_step_freq
 
-        # The NN will see the Robot via a single video feed that can run from one of two camera positions
-        # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
-        self.observation_space = spaces.Box(low=0, high=1, shape=(*IMG_RESOLUTION, 7))
-        # self.observation_space = spaces.Dict({
-        #     'rgb': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 3)), # rgb => 3 Dim (Normalized from 0-255 to 0-1)
-        #     'depth': spaces.Box(low=0, high=1, shape=(IMG_RESOLUTION[0], IMG_RESOLUTION[1], 1)), # depth in m => 1 Dim (Normalized from 0-2m to 0-1)
-        #     'seg': spaces.Discrete(4) # segmentation using one-hot encoding in 4 Groups
-        # })
+        self.observation_space = spaces.Dict({
+            # The NN will see the Robot via a single video feed that can run from one of two camera positions
+            # The NN will receive this feed in rgb, depth and image segmented to highlight objects of interest
+            'image': spaces.Box(low=0, high=1, shape=(*IMG_RESOLUTION, 7)),
+            # The Robot also receives the shape rotations of all 6 joints and the gripper state 
+            'vector': spaces.Box(low=-1, high=1, shape=(7,)),
+        })
 
         # The NN outputs the change in rotation for each joint as a fraction of the max rot speed per timestep (=__joint_rot_max)
         self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float)
-        # spaces.Dict({
-        #     'joint_rots': spaces.Box(low=-joint_rot_max, high=joint_rot_max, shape=(6,), dtype=float), # Joint rotations
-        #     'gripper_open': spaces.Discrete(2) # Gripper is open = 1, else 0
-        # })
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -209,7 +204,11 @@ class PackTask(BaseTask):
                     one_hot_img_seg[:, :, 1] = mask
                 elif path == DEST_BOX_PATH:
                     one_hot_img_seg[:, :, 2] = mask
-        return np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1)
+        robot_state = np.append(self.robot.get_joint_positions() / 2 * math.pi, float(self.robot.gripper.is_closed()))
+        return {
+            'image': np.concatenate([img_rgb, img_depth, one_hot_img_seg], axis=-1),
+            'vector': robot_state
+        }
 
 
 
@@ -255,22 +254,20 @@ class PackTask(BaseTask):
 
         partPos = self.part.get_world_pose()[0]
         if self.stage == 0:
-            gripper_to_part = np.linalg.norm(partPos - gripper_pos)
-            reward += 10 / gripper_to_part**2
+            gripper_to_part = np.linalg.norm(partPos - gripper_pos) * 100 # In cm
+            reward += 10 / max(gripper_to_part, 1)
             if START_TABLE_HEIGHT + 0.03 < partPos[2]:
                 reward += 500
                 self.stage = 1
         elif self.stage == 1:
-            part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos)
-            reward += 10 / part_to_dest**2
+            part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos) * 100 # In cm
+            reward += 10 / max(part_to_dest, 1)
             if part_to_dest < 0.2:
                 reward += 1000
                 done = True
             elif partPos[2] < 0.1:
                 reward -= 500
                 self.stage = 0
-
-        print(reward)
 
         return reward, done, {}
 

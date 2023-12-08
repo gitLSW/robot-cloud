@@ -65,8 +65,10 @@ class FromGym(embodied.Env):
         is_last=bool(self._done),
         is_terminal=bool(self._info.get('is_terminal', self._done)))
 
-  def _obs(self, obs, reward, is_first=False, is_last=False, is_terminal=False):
-    obs = obs[0]
+  def _obs(
+      self, obs, reward, is_first=False, is_last=False, is_terminal=False):
+    if type(obs) is tuple:
+      obs = obs[0]
     if not self._obs_dict:
       obs = {self._obs_key: obs}
     obs = self._flatten(obs)
