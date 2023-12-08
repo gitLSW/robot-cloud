@@ -168,14 +168,13 @@ class PackTask(BaseTask):
         
 
     def reset(self):
-        # self.table.initialize()
-        # self.box.initialize()
+        self.stage = 0
+        self.part.set_world_pose(PARTS_SOURCE)
         self.robot.initialize()
+        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
-        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-        # return np.zeros((*IMG_RESOLUTION, 7))
 
 
 
@@ -253,21 +252,15 @@ class PackTask(BaseTask):
         reward= 0
 
         partPos = self.part.get_world_pose()[0]
-        if self.stage != 2 and partPos[2] < 0.1:
-            reward -= 100
-
         if self.stage == 0:
             gripper_to_part = np.linalg.norm(partPos - gripper_pos)
             reward += 1 / gripper_to_part**2
-            
             if START_TABLE_HEIGHT + 0.03 < partPos[2]:
                 reward += 100
                 self.stage = 1
-
-        if self.stage == 1:
+        elif self.stage == 1:
             part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos)
             reward += 1 / part_to_dest**2
-
             if part_to_dest < 0.2:
                 reward += 100
                 done = True
