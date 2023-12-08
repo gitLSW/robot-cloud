@@ -53,7 +53,7 @@ DEST_BOX_PATH = "/World/DestinationBox"
 DEST_BOX_POS = np.array([0, -0.65, 0])
 
 PARTS_PATH = '/World/Parts'
-PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 1])
+PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.1])
 # NUM_PARTS = 5
 
 CAMERA_PATH = '/World/Camera' 
@@ -231,6 +231,7 @@ class PackTask(BaseTask):
     
     # Calculate Rewards
     stage = 0
+    frame = 0
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
@@ -245,25 +246,31 @@ class PackTask(BaseTask):
         #     # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
         #     self.__moveCamera(new_cam_pose, ROBOT_POS)
 
+        if self.frame < 50:
+            self.frame += 1
+            return 0, False, {}
+
         done = False
         reward= 0
 
         partPos = self.part.get_world_pose()[0]
         if self.stage == 0:
             gripper_to_part = np.linalg.norm(partPos - gripper_pos)
-            reward += 1 / gripper_to_part**2
+            reward += 10 / gripper_to_part**2
             if START_TABLE_HEIGHT + 0.03 < partPos[2]:
-                reward += 100
+                reward += 500
                 self.stage = 1
         elif self.stage == 1:
             part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos)
-            reward += 1 / part_to_dest**2
+            reward += 10 / part_to_dest**2
             if part_to_dest < 0.2:
-                reward += 100
+                reward += 1000
                 done = True
             elif partPos[2] < 0.1:
-                reward -= 100
+                reward -= 500
                 self.stage = 0
+
+        print(reward)
 
         return reward, done, {}
 
