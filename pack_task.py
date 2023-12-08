@@ -234,10 +234,10 @@ class PackTask(BaseTask):
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
-        # gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
-        # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         
         # # Move Camera
+        # gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
+        # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         # curr_cam_pos = self.__camera.get_world_pose()[0]
         # closer_to_dest = gripper_to_dest < gripper_to_start
         # new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
@@ -263,6 +263,7 @@ class PackTask(BaseTask):
                 done = True
             elif partPos[2] < 0.1:
                 reward -= 100
+                self.stage = 0
 
         return reward, done, {}
 
