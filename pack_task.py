@@ -54,6 +54,7 @@ DEST_BOX_POS = np.array([0, -0.65, 0])
 
 PARTS_PATH = '/World/Parts'
 PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 1])
+# NUM_PARTS = 5
 
 CAMERA_PATH = '/World/Camera' 
 CAMERA_POS_START = np.array([-2, 2, 2.5])
@@ -61,7 +62,7 @@ CAMERA_POS_DEST = np.array([2, -2, 2.5])
 IMG_RESOLUTION = (512, 512)
 
 class PackTask(BaseTask):
-    parts = []
+    part = None
 
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
@@ -131,13 +132,11 @@ class PackTask(BaseTask):
         self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', position=ROBOT_POS, attach_gripper=True)
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
-        for i in range(5):
-            part = objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
-                                         position=PARTS_SOURCE,
-                                         scale=[0.1, 0.1, 0.1])
-            # part.set_default_state(position=PARTS_SOURCE)
-            scene.add(part)
-            self.parts.append(part)
+        i = 0
+        self.part = objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
+                                       position=PARTS_SOURCE,
+                                       scale=[0.1, 0.1, 0.1])
+        scene.add(self.part)
 
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
@@ -199,15 +198,18 @@ class PackTask(BaseTask):
         one_hot_img_seg = img_seg = np.zeros((*IMG_RESOLUTION, 3))
 
         if img_seg_dict:
-            img_seg_info_dict = img_seg_dict['info'] # Dict: [pixel label: prim path]
+            img_seg_info_dict = img_seg_dict['info']['idToLabels'] # Dict: [pixel label: prim path]
             img_seg = img_seg_dict['data']  # Shape: (Width, Height)
+            
+            print(img_seg_info_dict)
             
             # Vectorised One-Hot-Encoding
             for label, path in img_seg_info_dict.items():
-                mask = (img_seg == label)
+                mask = (img_seg == label) # creates a bool matrix of an element wise comparison
+                print(label, path)
                 if path == ROBOT_PATH:
                     one_hot_img_seg[:, :, 0] = mask
-                elif path == PARTS_PATH:
+                elif path.startswith(PARTS_PATH):
                     one_hot_img_seg[:, :, 1] = mask
                 elif path == DEST_BOX_PATH:
                     one_hot_img_seg[:, :, 2] = mask
@@ -230,22 +232,49 @@ class PackTask(BaseTask):
             gripper.close()
 
 
+    
     # Calculate Rewards
+    stage = 0
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
-        gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
-        gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
+        # gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
+        # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         
-        # Move Camera
-        curr_cam_pos = self.__camera.get_world_pose()[0]
-        closer_to_dest = gripper_to_dest < gripper_to_start
-        new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
-        if not np.array_equal(new_cam_pose, curr_cam_pos):
-            # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
-            self.__moveCamera(new_cam_pose, ROBOT_POS)
+        # # Move Camera
+        # curr_cam_pos = self.__camera.get_world_pose()[0]
+        # closer_to_dest = gripper_to_dest < gripper_to_start
+        # new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
+        # if not np.array_equal(new_cam_pose, curr_cam_pos):
+        #     # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
+        #     self.__moveCamera(new_cam_pose, ROBOT_POS)
+
         done = False
-        return -gripper_to_dest, done, {}
+        reward= 0
+
+        partPos = self.part.get_world_pose()[0]
+        if self.stage != 2 and partPos[2] < 0.1:
+            reward -= 100
+
+        if self.stage == 0:
+            gripper_to_part = np.linalg.norm(partPos - gripper_pos)
+            reward += 1 / gripper_to_part**2
+            
+            if START_TABLE_HEIGHT + 0.03 < partPos[2]:
+                reward += 100
+                self.stage = 1
+
+        if self.stage == 1:
+            part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos)
+            reward += 1 / part_to_dest**2
+
+            if part_to_dest < 0.2:
+                reward += 100
+                done = True
+            elif partPos[2] < 0.1:
+                reward -= 100
+
+        return reward, done, {}
 
 
 
