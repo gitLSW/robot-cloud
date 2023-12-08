@@ -200,12 +200,9 @@ class PackTask(BaseTask):
             img_seg_info_dict = img_seg_dict['info']['idToLabels'] # Dict: [pixel label: prim path]
             img_seg = img_seg_dict['data']  # Shape: (Width, Height)
             
-            print(img_seg_info_dict)
-            
             # Vectorised One-Hot-Encoding
             for label, path in img_seg_info_dict.items():
                 mask = (img_seg == label) # creates a bool matrix of an element wise comparison
-                print(label, path)
                 if path == ROBOT_PATH:
                     one_hot_img_seg[:, :, 0] = mask
                 elif path.startswith(PARTS_PATH):
