@@ -2,21 +2,22 @@ import os
 import dreamerv3
 from dreamerv3 import embodied
 from embodied.envs import from_gym
-from omni.isaac.gym.vec_env import VecEnvBase
+from dreamer_env import DreamerEnv
 
 name = "monster_model"
 
 # See configs.yaml for all options.
 config = embodied.Config(dreamerv3.configs['defaults'])
-#config = config.update(dreamerv3.configs['small'])
-config = config.update(dreamerv3.configs['medium'])
+config = config.update(dreamerv3.configs['small'])
+# config = config.update(dreamerv3.configs['medium'])
 # config = config.update(dreamerv3.configs['large'])
 #config = config.update(dreamerv3.configs['xlarge'])
 config = config.update({
-    'logdir': '~/logdir/' + name,
+    'logdir': './logdir/' + name,
     'run.train_ratio': 64,
     'run.log_every': 30,  # Seconds
     'batch_size': 16,
+    'batch_length': 64,
     'jax.prealloc': False,
     'encoder.mlp_keys': 'vector',
     'decoder.mlp_keys': 'vector',
@@ -39,7 +40,7 @@ logger = embodied.Logger(step, [
 ])
 
 # create Isaac environment
-env = VecEnvBase(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit') # Open Sim Window
+env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit') # Open Sim Window
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack")
@@ -58,5 +59,7 @@ agent = dreamerv3.Agent(env.obs_space, env.act_space, step, config)
 replay = embodied.replay.Uniform(config.batch_length, config.replay_size, logdir / 'replay')
 args = embodied.Config(**config.run, logdir=config.logdir, batch_steps=config.batch_size * config.batch_length)
 embodied.run.train(agent, env, replay, logger, args)
+
+print('Finished Traing')
 
 # env.close()

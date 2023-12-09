@@ -269,7 +269,7 @@ class PackTask(BaseTask):
                 reward -= 500
                 self.stage = 0
 
-        return reward, done, {}
+        return reward
 
 
 
