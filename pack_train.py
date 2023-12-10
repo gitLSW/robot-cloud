@@ -45,7 +45,7 @@ env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaa
 from pack_task import PackTask # Cannot be imported before Sim has started
 sim_s_step_freq = 60
 task = PackTask(name="Pack", sim_s_step_freq=sim_s_step_freq)
-env.set_task(task, backend="numpy", rendering_dt=sim_s_step_freq)
+env.set_task(task, backend="numpy", rendering_dt=1 / sim_s_step_freq)
 # env.reset()
 
 env = from_gym.FromGym(env, obs_key='image')
