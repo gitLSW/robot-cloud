@@ -43,8 +43,9 @@ logger = embodied.Logger(step, [
 env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit') # Open Sim Window
 
 from pack_task import PackTask # Cannot be imported before Sim has started
-task = PackTask(name="Pack")
-env.set_task(task, backend="numpy")
+sim_s_step_freq = 60
+task = PackTask(name="Pack", sim_s_step_freq=sim_s_step_freq)
+env.set_task(task, backend="numpy", rendering_dt=sim_s_step_freq)
 # env.reset()
 
 env = from_gym.FromGym(env, obs_key='image')
@@ -58,6 +59,7 @@ print('Starting Training...')
 agent = dreamerv3.Agent(env.obs_space, env.act_space, step, config)
 replay = embodied.replay.Uniform(config.batch_length, config.replay_size, logdir / 'replay')
 args = embodied.Config(**config.run, logdir=config.logdir, batch_steps=config.batch_size * config.batch_length)
+print(args)
 embodied.run.train(agent, env, replay, logger, args)
 
 print('Finished Traing')
