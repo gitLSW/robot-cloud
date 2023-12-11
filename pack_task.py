@@ -59,7 +59,7 @@ PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.1])
 CAMERA_PATH = '/World/Camera' 
 CAMERA_POS_START = np.array([-2, 2, 2.5])
 CAMERA_POS_DEST = np.array([2, -2, 2.5])
-IMG_RESOLUTION = (512, 512)
+IMG_RESOLUTION = (256, 256)
 
 class PackTask(BaseTask):
     part = None

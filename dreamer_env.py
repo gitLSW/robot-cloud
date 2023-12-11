@@ -29,6 +29,8 @@ class DreamerEnv(VecEnvBase):
         """
         super().__init__(headless, sim_device, enable_livestream, enable_viewport, launch_simulation_app, experience)
 
+
+
     def step(self, actions):
         """Basic implementation for stepping simulation.
             Can be overriden by inherited Env classes
@@ -43,37 +45,12 @@ class DreamerEnv(VecEnvBase):
             dones(Union[numpy.ndarray, torch.Tensor]): Buffer of resets/dones data.
             info(dict): Dictionary of extras data.
         """
-        """Basic implementation for stepping simulation.
-            Can be overriden by inherited Env classes
-            to satisfy requirements of specific RL libraries. This method passes actions to task
-            for processing, steps simulation, and computes observations, rewards, and resets.
+        print(self._world.is_playing(), self.sim_frame_count)
+        observations, rewards, terminated, truncated, info = super().step(actions)
 
-        Args:
-            actions (Union[numpy.ndarray, torch.Tensor]): Actions buffer from policy.
-        Returns:
-            observations(Union[numpy.ndarray, torch.Tensor]): Buffer of observation data.
-            rewards(Union[numpy.ndarray, torch.Tensor]): Buffer of rewards data.
-            dones(Union[numpy.ndarray, torch.Tensor]): Buffer of resets/dones data.
-            info(dict): Dictionary of extras data.
-        """
-        print(self._world.is_playing())
-
-        if not self._world.is_playing():
-            self.close()
-
-        self._task.pre_physics_step(actions)
-        self._world.step(render=self._render)
-
-        self.sim_frame_count += 1
-
-        if not self._world.is_playing():
-            self.close()
-
-        observations = self._task.get_observations()
-        rewards = self._task.calculate_metrics()
-        terminated = self._task.is_done()
-        truncated = self._task.is_done() * 0
-        info = {}
+        if type(rewards) is tuple:
+            rewards = rewards[0]
+            
         return observations, rewards, terminated, info
     
 

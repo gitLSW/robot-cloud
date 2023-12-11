@@ -16,8 +16,8 @@ config = config.update({
     'logdir': './logdir/' + name,
     'run.train_ratio': 64,
     'run.log_every': 30,  # Seconds
-    'batch_size': 16,
-    'batch_length': 64,
+    'batch_size': 8,
+    'batch_length': 16,
     'jax.prealloc': False,
     'encoder.mlp_keys': 'vector',
     'decoder.mlp_keys': 'vector',
