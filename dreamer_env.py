@@ -45,7 +45,6 @@ class DreamerEnv(VecEnvBase):
             dones(Union[numpy.ndarray, torch.Tensor]): Buffer of resets/dones data.
             info(dict): Dictionary of extras data.
         """
-        print(self._world.is_playing(), self.sim_frame_count)
         observations, rewards, terminated, truncated, info = super().step(actions)
 
         if type(rewards) is tuple:
