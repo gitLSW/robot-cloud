@@ -31,6 +31,15 @@ class DreamerEnv(VecEnvBase):
 
 
 
+    def is_done(self) -> bool:
+        """Returns True of the task is done.
+
+        Raises:
+            NotImplementedError: [description]
+        """
+        raise False
+    
+
     def step(self, actions):
         """Basic implementation for stepping simulation.
             Can be overriden by inherited Env classes
@@ -45,12 +54,24 @@ class DreamerEnv(VecEnvBase):
             dones(Union[numpy.ndarray, torch.Tensor]): Buffer of resets/dones data.
             info(dict): Dictionary of extras data.
         """
-        observations, rewards, terminated, truncated, info = super().step(actions)
+        if not self._world.is_playing():
+            self.close()
 
-        if type(rewards) is tuple:
-            rewards = rewards[0]
-            
-        return observations, rewards, terminated, info
+        self._task.pre_physics_step(actions)
+        self._world.step(render=self._render)
+
+        self.sim_frame_count += 1
+
+        # if not self._world.is_playing():
+        #     self.close()
+
+        observations = self._task.get_observations()
+        rewards, done = self._task.calculate_metrics()
+        # terminated = self._task.is_done()
+        # truncated = self._task.is_done() * 0
+        info = {}
+
+        return observations, rewards, done, info
     
 
 

@@ -1,13 +1,16 @@
 import os
 import math
+import random
 import numpy as np
+from pxr import Gf
 from gymnasium import spaces
 
-from omni.isaac.sensor import Camera
 from omni.isaac.core.utils.extensions import enable_extension
 # enable_extension("omni.importer.urdf")
 enable_extension("omni.isaac.universal_robots")
+enable_extension("omni.isaac.sensor")
 # from omni.importer.urdf import _urdf
+from omni.isaac.sensor import Camera
 from omni.isaac.universal_robots.ur10 import UR10
 # from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
 
@@ -37,7 +40,6 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 #         "sdf": PhysxSchema.PhysxSDFMeshCollisionAPI,
 # }
 
-from pxr import Gf
 
 ENV_PATH = "/World/Env"
 
@@ -53,30 +55,32 @@ DEST_BOX_PATH = "/World/DestinationBox"
 DEST_BOX_POS = np.array([0, -0.65, 0])
 
 PARTS_PATH = '/World/Parts'
-PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.1])
+PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.05])
 # NUM_PARTS = 5
 
-CAMERA_PATH = '/World/Camera' 
-CAMERA_POS_START = np.array([-2, 2, 2.5])
-CAMERA_POS_DEST = np.array([2, -2, 2.5])
+CAMERA_PATH = '/World/Camera'
 IMG_RESOLUTION = (128, 128)
+CAM_TARGET_OFFSET = (2.5, 2) # Distance and Height
+# CAMERA_POS_START = np.array([-2, 2, 2.5])
+# CAMERA_POS_DEST = np.array([2, -2, 2.5])
+
+MAX_STEP_PUNISHMENT = 10
 
 class PackTask(BaseTask):
-    part = None
-
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
     Args:
         offset (Optional[np.ndarray], optional): offset applied to all assets of the task.
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
-    def __init__(self, name, offset=None, sim_s_step_freq: int = 60) -> None:
+    def __init__(self, name, max_steps, offset=None, sim_s_step_freq: int = 60) -> None:
         # self._num_observations = 1
         # self._num_actions = 1
         self._device = "cpu"
         self.num_envs = 1
         # Robot turning ange of max speed is 191deg/s
         self.__joint_rot_max = (191.0 * math.pi / 180) / sim_s_step_freq
+        self.max_steps = max_steps
 
         self.observation_space = spaces.Dict({
             # The NN will see the Robot via a single video feed that can run from one of two camera positions
@@ -114,17 +118,20 @@ class PackTask(BaseTask):
         self.table = XFormPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
         add_reference_to_stage(table_path, START_TABLE_PATH)
         setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True)
+        self._task_objects[START_TABLE_PATH] = self.table
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
         self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS, scale=[1, 1, 0.4])
         add_reference_to_stage(box_path, DEST_BOX_PATH)
         setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True)
+        self._task_objects[DEST_BOX_PATH] = self.box
 
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
         self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', position=ROBOT_POS, attach_gripper=True)
+        self._task_objects[ROBOT_PATH] = self.robot
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         i = 0
@@ -132,17 +139,20 @@ class PackTask(BaseTask):
                                        position=PARTS_SOURCE,
                                        scale=[0.1, 0.1, 0.1])
         scene.add(self.part)
+        self._task_objects[PARTS_PATH] = self.part
 
+        self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
         self.__camera = Camera(
             prim_path=CAMERA_PATH,
             frequency=20,
             resolution=IMG_RESOLUTION,
-            # position=torch.tensor(CAMERA_POS_START),
+            # position=torch.tensor(self.cam_start_pos),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
         self.__camera.set_focal_length(2.0)
 
-        self.__moveCamera(position=CAMERA_POS_START, target=ROBOT_POS)
+        self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
+        self._task_objects[CAMERA_PATH] = self.__camera
 
         viewport = get_active_viewport()
         viewport.set_active_camera(CAMERA_PATH)
@@ -153,23 +163,43 @@ class PackTask(BaseTask):
     
 
 
-    def __moveCamera(self, position, target):
+    def __move_camera(self, position, target):
         # USD Frame flips target and position, so they have to be flipped here
         quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
                                                    target=Gf.Vec3f(*position),
                                                    up=Gf.Vec3f(0, 0, 1)))
         self.__camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
+
     
+    def __get_cam_pos(self, center, distance, height):
+        angle = random.random() * 2 * math.pi
+        pos = np.array([distance, 0])
+        rot_matr = np.array([[np.cos(angle), -np.sin(angle)],
+                             [np.sin(angle), np.cos(angle)]])
+        pos = np.matmul(pos, rot_matr)
+        pos = np.array([*pos, height])
+        return center + pos
+        
         
 
     def reset(self):
-        self.stage = 0
-        self.part.set_world_pose(PARTS_SOURCE)
+        # super().cleanup()
+
+        # if not self.robot.handles_initialized():
         self.robot.initialize()
-        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+        
         self.__camera.initialize()
         self.__camera.add_distance_to_image_plane_to_frame() # depth cam
         self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
+        self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
+        self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
+
+        self.step = 0
+        self.stage = 0
+        self.part.set_world_pose(PARTS_SOURCE)
+        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+
+        self._move_task_objects_to_their_frame()
 
 
 
@@ -213,6 +243,9 @@ class PackTask(BaseTask):
 
 
     def pre_physics_step(self, actions) -> None:
+        if self.step < 20:
+            return
+        
         # Rotate Joints
         joint_rots = self.robot.get_joint_positions()
         joint_rots += np.array(actions[0:6]) * self.__joint_rot_max
@@ -230,7 +263,7 @@ class PackTask(BaseTask):
     
     # Calculate Rewards
     stage = 0
-    frame = 0
+    step = 0
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
@@ -240,14 +273,14 @@ class PackTask(BaseTask):
         # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
         # curr_cam_pos = self.__camera.get_world_pose()[0]
         # closer_to_dest = gripper_to_dest < gripper_to_start
-        # new_cam_pose = CAMERA_POS_DEST if closer_to_dest else CAMERA_POS_START
+        # new_cam_pose = self.cam_dest_pos if closer_to_dest else self.cam_start_pos
         # if not np.array_equal(new_cam_pose, curr_cam_pos):
         #     # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
-        #     self.__moveCamera(new_cam_pose, ROBOT_POS)
+        #     self.__move_camera(new_cam_pose, ROBOT_POS)
 
-        if self.frame < 50:
-            self.frame += 1
-            return 0, False, {}
+        self.step += 1
+        if self.step < 20:
+            return 0, False
 
         done = False
         reward= 0
@@ -255,23 +288,23 @@ class PackTask(BaseTask):
         partPos = self.part.get_world_pose()[0]
         if self.stage == 0:
             gripper_to_part = np.linalg.norm(partPos - gripper_pos) * 100 # In cm
-            reward += 10 / max(gripper_to_part, 1)
-            if START_TABLE_HEIGHT + 0.03 < partPos[2]:
-                reward += 500
+            reward -= max(gripper_to_part, MAX_STEP_PUNISHMENT)
+            if START_TABLE_HEIGHT + 0.03 < partPos[2]: # Part was picked up
+                reward += 50 * MAX_STEP_PUNISHMENT
                 self.stage = 1
         elif self.stage == 1:
             part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos) * 100 # In cm
-            reward += 10 / max(part_to_dest, 1)
-            if part_to_dest < 0.2:
-                reward += 1000
+            reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
+            if part_to_dest < 0.2: # Part reached box
+                reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+                self.reset()
                 done = True
-            elif partPos[2] < 0.1:
-                reward -= 500
-                self.stage = 0
+        
+        if not done and (partPos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
+                for _ in range(10):
+                    print('END REWARD:', reward)
+                reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+                self.reset()
+                done = True
 
-        return reward
-
-
-
-    def is_done(self) -> None:
-        return False
+        return reward, done

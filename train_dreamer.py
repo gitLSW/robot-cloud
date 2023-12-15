@@ -4,7 +4,8 @@ from dreamerv3 import embodied
 from embodied.envs import from_gym
 from dreamer_env import DreamerEnv
 
-name = "monster_model"
+name = "test"
+MAX_STEPS_PER_EPISODE = 300
 
 # See configs.yaml for all options.
 config = embodied.Config(dreamerv3.configs['defaults'])
@@ -39,12 +40,14 @@ logger = embodied.Logger(step, [
     # embodied.logger.MLFlowOutput(logdir.name),
 ])
 
-# create Isaac environment
-env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit') # Open Sim Window
+# Create Isaac environment and open Sim Window
+# env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.gym.kit')
+env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
+# env = DreamerEnv(headless=True, enable_viewport=True)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 sim_s_step_freq = 60
-task = PackTask(name="Pack", sim_s_step_freq=sim_s_step_freq)
+task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=sim_s_step_freq)
 env.set_task(task, backend="numpy", rendering_dt=1 / sim_s_step_freq)
 # env.reset()
 
