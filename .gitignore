@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 tutorials
 dreamerv3
+logdir
 
 # C extensions
 *.so

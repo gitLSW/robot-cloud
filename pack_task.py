@@ -41,24 +41,24 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 # }
 
 
-ENV_PATH = "/World/Env"
+ENV_PATH = "World/Env"
 
-ROBOT_PATH = '/World/UR10e'
+ROBOT_PATH = 'World/UR10e'
 ROBOT_POS = np.array([0.0, 0.0, 0.0])
 # 5.45, 3, 0
-START_TABLE_PATH = "/World/StartTable"
+START_TABLE_PATH = "World/StartTable"
 START_TABLE_POS = np.array([0.36, 0.8, 0])
 START_TABLE_HEIGHT = 0.6
 START_TABLE_CENTER = START_TABLE_POS + np.array([0, 0, START_TABLE_HEIGHT])
 
-DEST_BOX_PATH = "/World/DestinationBox"
+DEST_BOX_PATH = "World/DestinationBox"
 DEST_BOX_POS = np.array([0, -0.65, 0])
 
-PARTS_PATH = '/World/Parts'
+PARTS_PATH = 'World/Parts'
 PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.05])
 # NUM_PARTS = 5
 
-CAMERA_PATH = '/World/Camera'
+CAMERA_PATH = 'World/Camera'
 IMG_RESOLUTION = (128, 128)
 CAM_TARGET_OFFSET = (2.5, 2) # Distance and Height
 # CAMERA_POS_START = np.array([-2, 2, 2.5])
@@ -74,6 +74,13 @@ class PackTask(BaseTask):
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
     def __init__(self, name, max_steps, offset=None, sim_s_step_freq: int = 60) -> None:
+        self._env_path = f"/{name}/{ENV_PATH}"
+        self._robot_path = f"/{name}/{ROBOT_PATH}"
+        self._start_table_path = f"/{name}/{START_TABLE_PATH}"
+        self._dest_box_path = f"/{name}/{DEST_BOX_PATH}"
+        self._parts_path = f"/{name}/{PARTS_PATH}"
+        self._camera_path = f"/{name}/{CAMERA_PATH}"
+
         # self._num_observations = 1
         # self._num_actions = 1
         self._device = "cpu"
@@ -107,55 +114,56 @@ class PackTask(BaseTask):
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
         # assets_root_path = get_assets_root_path()
 
-        # _ = XFormPrim(prim_path=ENV_PATH, position=-np.array([5, 4.5, 0]))
+        # _ = XFormPrim(prim_path=self._env_path, position=-np.array([5, 4.5, 0]))
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
-        # add_reference_to_stage(warehouse_path, ENV_PATH)
+        # add_reference_to_stage(warehouse_path, self._env_path)
         
-        scene.add_default_ground_plane()
-
+        # scene.add_default_ground_plane()
+        
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
-        self.table = XFormPrim(prim_path=START_TABLE_PATH, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
-        add_reference_to_stage(table_path, START_TABLE_PATH)
+        self.table = XFormPrim(prim_path=self._start_table_path, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
+        add_reference_to_stage(table_path, self._start_table_path)
         setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True)
-        self._task_objects[START_TABLE_PATH] = self.table
+        self._task_objects[self._start_table_path] = self.table
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
-        self.box = XFormPrim(prim_path=DEST_BOX_PATH, position=DEST_BOX_POS, scale=[1, 1, 0.4])
-        add_reference_to_stage(box_path, DEST_BOX_PATH)
+        self.box = XFormPrim(prim_path=self._dest_box_path, position=DEST_BOX_POS, scale=[1, 1, 0.4])
+        add_reference_to_stage(box_path, self._dest_box_path)
         setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True)
-        self._task_objects[DEST_BOX_PATH] = self.box
+        self._task_objects[self._dest_box_path] = self.box
 
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
-        self.robot = UR10(prim_path=ROBOT_PATH, name='UR16e', position=ROBOT_POS, attach_gripper=True)
-        self._task_objects[ROBOT_PATH] = self.robot
+        self.robot = UR10(prim_path=self._robot_path, name='UR16e', position=ROBOT_POS, attach_gripper=True)
+        self._task_objects[self._robot_path] = self.robot
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         i = 0
-        self.part = objs.DynamicCuboid(prim_path=f'{PARTS_PATH}/Part_{i}', name=f'Part_{i}',
+        self.part = objs.DynamicCuboid(prim_path=f'{self._parts_path}/Part_{i}',
+                                       name=f'{self.name}_Part_{i}',
                                        position=PARTS_SOURCE,
                                        scale=[0.1, 0.1, 0.1])
         scene.add(self.part)
-        self._task_objects[PARTS_PATH] = self.part
+        self._task_objects[self._parts_path] = self.part
 
         self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
-        self.__camera = Camera(
-            prim_path=CAMERA_PATH,
+        self._camera = Camera(
+            prim_path=self._camera_path,
             frequency=20,
             resolution=IMG_RESOLUTION,
             # position=torch.tensor(self.cam_start_pos),
             # orientation=torch.tensor([1, 0, 0, 0])
         )
-        self.__camera.set_focal_length(2.0)
+        self._camera.set_focal_length(2.0)
 
         self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
-        self._task_objects[CAMERA_PATH] = self.__camera
+        self._task_objects[self._camera_path] = self._camera
 
-        viewport = get_active_viewport()
-        viewport.set_active_camera(CAMERA_PATH)
+        # viewport = get_active_viewport()
+        # viewport.set_active_camera(self._camera_path)
 
         # set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
 
@@ -168,7 +176,7 @@ class PackTask(BaseTask):
         quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
                                                    target=Gf.Vec3f(*position),
                                                    up=Gf.Vec3f(0, 0, 1)))
-        self.__camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
+        self._camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
 
     
     def __get_cam_pos(self, center, distance, height):
@@ -188,9 +196,9 @@ class PackTask(BaseTask):
         # if not self.robot.handles_initialized():
         self.robot.initialize()
         
-        self.__camera.initialize()
-        self.__camera.add_distance_to_image_plane_to_frame() # depth cam
-        self.__camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
+        self._camera.initialize()
+        self._camera.add_distance_to_image_plane_to_frame() # depth cam
+        self._camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
         self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
         self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
 
@@ -204,7 +212,7 @@ class PackTask(BaseTask):
 
 
     def get_observations(self):
-        frame = self.__camera.get_current_frame()
+        frame = self._camera.get_current_frame()
 
         img_rgba = frame['rgba']  # Shape: (Width, Height, 4)
         img_rgb = img_rgba[:, :, :3] / 255.0 # Remove alpha from rgba and scale between 0-1
@@ -228,11 +236,11 @@ class PackTask(BaseTask):
             # Vectorised One-Hot-Encoding
             for label, path in img_seg_info_dict.items():
                 mask = (img_seg == label) # creates a bool matrix of an element wise comparison
-                if path == ROBOT_PATH:
+                if path == self._self._robot_path:
                     one_hot_img_seg[:, :, 0] = mask
-                elif path.startswith(PARTS_PATH):
+                elif path.startswith(self._parts_path):
                     one_hot_img_seg[:, :, 1] = mask
-                elif path == DEST_BOX_PATH:
+                elif path == self._dest_box_path:
                     one_hot_img_seg[:, :, 2] = mask
         robot_state = np.append(self.robot.get_joint_positions() / 2 * math.pi, float(self.robot.gripper.is_closed()))
         return {
@@ -271,7 +279,7 @@ class PackTask(BaseTask):
         # # Move Camera
         # gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
         # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
-        # curr_cam_pos = self.__camera.get_world_pose()[0]
+        # curr_cam_pos = self._camera.get_world_pose()[0]
         # closer_to_dest = gripper_to_dest < gripper_to_start
         # new_cam_pose = self.cam_dest_pos if closer_to_dest else self.cam_start_pos
         # if not np.array_equal(new_cam_pose, curr_cam_pos):

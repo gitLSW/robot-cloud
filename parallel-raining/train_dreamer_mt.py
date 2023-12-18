@@ -2,7 +2,8 @@ import os
 import dreamerv3
 from dreamerv3 import embodied
 from embodied.envs import from_gym
-from dreamer_env import DreamerEnv
+from gym_env_mt import GymEnvMT
+from functools import partial as bind
 
 name = "test"
 MAX_STEPS_PER_EPISODE = 300
@@ -42,19 +43,29 @@ logger = embodied.Logger(step, [
 
 # Create Isaac environment and open Sim Window
 # env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.gym.kit')
-env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
-# env = DreamerEnv(headless=True, enable_viewport=True)
-env._world.scene.add_default_ground_plane()
-
-from pack_task import PackTask # Cannot be imported before Sim has started
-sim_s_step_freq = 60
-task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=sim_s_step_freq)
-env.set_task(task, backend="numpy", rendering_dt=1 / sim_s_step_freq)
+env = GymEnvMT(max_steps = MAX_STEPS_PER_EPISODE,
+               sim_s_step_freq = 60,
+               headless=False,
+               experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
+spacing = 5
+offsets = [[spacing, spacing, 0], [spacing, 0, 0], [spacing, -spacing, 0],
+           [0, spacing, 0], [0, 0, 0], [0, -spacing, 0],
+           [-spacing, spacing, 0], [-spacing, 0, 0], [-spacing, -spacing, 0]]
+task_envs = env.init_tasks(offsets, backend="numpy")
 # env.reset()
 
-env = from_gym.FromGym(env, obs_key='image')
-env = dreamerv3.wrap_env(env, config)
-env = embodied.BatchEnv([env], parallel=False)
+def make_env(task_env):
+    task_env = from_gym.FromGym(task_env, obs_key='image')
+    task_env = dreamerv3.wrap_env(task_env, config)
+    return task_env
+
+ctors = []
+for task_env in task_envs:
+    ctor = lambda : make_env(task_env)
+    ctor = bind(embodied.Parallel, ctor, config.envs.parallel)
+    ctors.append(ctor)
+task_envs = [ctor() for ctor in ctors]
+env = embodied.BatchEnv(task_envs, parallel=True)
 
 print('Starting Training...')
 
