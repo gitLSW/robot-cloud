@@ -14,5 +14,5 @@ task = PackTask(name="Pack", max_steps=100000, sim_s_step_freq=sim_s_step_freq)
 world.add_task(task)
 world.reset()
 
-for step in range(100000):
+while True:
     world.step(render=True)

@@ -67,6 +67,13 @@ CAM_TARGET_OFFSET = (2.5, 2) # Distance and Height
 
 MAX_STEP_PUNISHMENT = 10
 
+IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
+                   ([-0.06, -0.14044, 0.0803], [0.072, 0.99, 0, 0]),
+                   ([-0.06, -0.07827, 0.0803], [0.072, 0.99, 0, 0]),
+                   ([-0.06, -0.01597, 0.0803], [0.072, 0.99, 0, 0]),
+                   ([-0.06, 0.04664, 0.0803], [0.072, 0.99, 0, 0]),
+                   ([-0.06, 0.10918, 0.0803], [0.072, 0.99, 0, 0])]
+
 class PackTask(BaseTask):
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
@@ -144,9 +151,9 @@ class PackTask(BaseTask):
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         i = 0
-        part_usd_path = local_assets + '/dräxlmaier_part.usd'
+        part_usd_path = local_assets + '/draexlmaier_part.usd'
         part_path = f'{self._parts_path}/Part_{i}'
-        self.part = XFormPrim(prim_path=part_path, position=PARTS_SOURCE)
+        self.part = XFormPrim(prim_path=part_path, position=PARTS_SOURCE, orientation=[0, 1, 0, 0])
         add_reference_to_stage(part_usd_path, part_path)
         setRigidBody(self.part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
         self._task_objects[self._parts_path] = self.part
@@ -295,22 +302,33 @@ class PackTask(BaseTask):
         done = False
         reward= 0
 
-        partPos = self.part.get_world_pose()[0]
+        part_pos, part_rot = self.part.get_world_pose()
         if self.stage == 0:
-            gripper_to_part = np.linalg.norm(partPos - gripper_pos) * 100 # In cm
+            gripper_to_part = np.linalg.norm(part_pos - gripper_pos) * 100 # In cm
             reward -= max(gripper_to_part, MAX_STEP_PUNISHMENT)
-            if START_TABLE_HEIGHT + 0.03 < partPos[2]: # Part was picked up
+            if START_TABLE_HEIGHT + 0.03 < part_pos[2]: # Part was picked up
                 reward += 50 * MAX_STEP_PUNISHMENT
                 self.stage = 1
         elif self.stage == 1:
-            part_to_dest = np.linalg.norm(DEST_BOX_POS - partPos) * 100 # In cm
-            reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
-            if part_to_dest < 0.2: # Part reached box
-                reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-                self.reset()
-                done = True
+            part_to_dest = np.linalg.norm(DEST_BOX_POS - part_pos) * 100 # In cm
+            if 0.1 < part_to_dest: # Part reached box
+                reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
+            else:
+                # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+                ideal_part = self._get_closest_part(part_pos)
+                pos_error = ((part_pos - ideal_part[0])**2).mean()
+                rot_error = ((part_rot - ideal_part[1])**2).mean()
+
+                print('POS AND ROT ERROR', pos_error, rot_error)
+                reward += pos_error + rot_error
         
-        if not done and (partPos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
+
+        # End successfully if all parts are in the Box
+        # if self.part
+        #     self.reset()
+        #     done = True
+        
+        if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
                 for _ in range(10):
                     print('END REWARD:', reward)
                 reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
@@ -318,3 +336,13 @@ class PackTask(BaseTask):
                 done = True
 
         return reward, done
+    
+    def _get_closest_part(self, pos):
+        closest_part = None
+        min_dist = 10000000
+        for part in IDEAL_PACKAGING:
+            dist = np.linalg.norm(part[0] - pos)
+            if dist < min_dist:
+                closest_part = part
+                min_dist = dist
+        return closest_part
