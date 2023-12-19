@@ -126,6 +126,7 @@ class GymEnvMT(VecEnvBase):
 
 
 
+    tasks_initialized = False
     def init_tasks(self, offsets, backend="numpy", sim_params=None, init_sim=True) -> None:
         """Creates a World object and adds Task to World.
             Initializes and registers task to the environment interface.
@@ -138,6 +139,11 @@ class GymEnvMT(VecEnvBase):
             init_sim (Optional[bool]): Automatically starts simulation. Defaults to True.
             rendering_dt (Optional[float]): dt for rendering. Defaults to 1/60s.
         """
+        if self.tasks_initialized:
+            return [GymTaskEnv(task_id, self) for task_id in self._tasks.values()]
+        else:
+            self.tasks_initialized = True
+
         from omni.isaac.core.world import World
 
         # parse device based on sim_param settings
