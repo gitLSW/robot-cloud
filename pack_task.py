@@ -15,6 +15,7 @@ from omni.isaac.universal_robots.ur10 import UR10
 # from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
 
 from omni.isaac.core.prims import XFormPrim, RigidPrim, GeometryPrim
+from omni.isaac.core.materials.physics_material import PhysicsMaterial
 from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.tasks.base_task import BaseTask
 from omni.isaac.gym.tasks.rl_task import RLTaskInterface
@@ -124,14 +125,15 @@ class PackTask(BaseTask):
         table_path = local_assets + '/table_low.usd'
         self.table = XFormPrim(prim_path=self._start_table_path, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
         add_reference_to_stage(table_path, self._start_table_path)
-        setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True)
+        setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True) # Kinematic True means immovable
+        # self.table = RigidPrim(rim_path=self._start_table_path, name='TABLE')
         self._task_objects[self._start_table_path] = self.table
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
         self.box = XFormPrim(prim_path=self._dest_box_path, position=DEST_BOX_POS, scale=[1, 1, 0.4])
         add_reference_to_stage(box_path, self._dest_box_path)
-        setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True)
+        setRigidBody(self.box.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
         self._task_objects[self._dest_box_path] = self.box
 
         # The UR10e has 6 joints, each with a maximum:
@@ -142,11 +144,11 @@ class PackTask(BaseTask):
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         i = 0
-        self.part = objs.DynamicCuboid(prim_path=f'{self._parts_path}/Part_{i}',
-                                       name=f'{self.name}_Part_{i}',
-                                       position=PARTS_SOURCE,
-                                       scale=[0.1, 0.1, 0.1])
-        scene.add(self.part)
+        part_usd_path = local_assets + '/dräxlmaier_part.usd'
+        part_path = f'{self._parts_path}/Part_{i}'
+        self.part = XFormPrim(prim_path=part_path, position=PARTS_SOURCE)
+        add_reference_to_stage(part_usd_path, part_path)
+        setRigidBody(self.part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
         self._task_objects[self._parts_path] = self.part
 
         self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
