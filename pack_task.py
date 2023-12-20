@@ -158,17 +158,16 @@ class PackTask(BaseTask):
         setRigidBody(self.part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
         self._task_objects[self._parts_path] = self.part
 
-        self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
+        # Box=math.pi / 2, Table=3 * math.pi / 2
+        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=math.pi)
         self._camera = Camera(
             prim_path=self._camera_path,
             frequency=20,
-            resolution=IMG_RESOLUTION,
-            # position=torch.tensor(self.cam_start_pos),
-            # orientation=torch.tensor([1, 0, 0, 0])
+            resolution=IMG_RESOLUTION
         )
         self._camera.set_focal_length(2.0)
 
-        self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
+        self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
         self._task_objects[self._camera_path] = self._camera
 
         # viewport = get_active_viewport()
@@ -180,25 +179,6 @@ class PackTask(BaseTask):
     
 
 
-    def __move_camera(self, position, target):
-        # USD Frame flips target and position, so they have to be flipped here
-        quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
-                                                   target=Gf.Vec3f(*position),
-                                                   up=Gf.Vec3f(0, 0, 1)))
-        self._camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
-
-    
-    def __get_cam_pos(self, center, distance, height):
-        angle = random.random() * 2 * math.pi
-        pos = np.array([distance, 0])
-        rot_matr = np.array([[np.cos(angle), -np.sin(angle)],
-                             [np.sin(angle), np.cos(angle)]])
-        pos = np.matmul(pos, rot_matr)
-        pos = np.array([*pos, height])
-        return center + pos
-        
-        
-
     def reset(self):
         # super().cleanup()
 
@@ -208,8 +188,8 @@ class PackTask(BaseTask):
         self._camera.initialize()
         self._camera.add_distance_to_image_plane_to_frame() # depth cam
         self._camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
-        self.cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET)
-        self.__move_camera(position=self.cam_start_pos, target=ROBOT_POS)
+        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=3 * math.pi / 2)
+        self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
 
         self.step = 0
         self.stage = 0
@@ -217,6 +197,30 @@ class PackTask(BaseTask):
         self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
         self._move_task_objects_to_their_frame()
+
+
+
+    def __move_camera(self, position, target):
+        # USD Frame flips target and position, so they have to be flipped here
+        quat = gf_quat_to_np_array(lookat_to_quatf(camera=Gf.Vec3f(*target),
+                                                   target=Gf.Vec3f(*position),
+                                                   up=Gf.Vec3f(0, 0, 1)))
+        self._camera.set_world_pose(position=position, orientation=quat, camera_axes='usd')
+
+    
+
+    def __get_cam_pos(self, center, distance, height, mean_angle = None):
+        angle = None
+        if mean_angle:
+            angle = np.random.normal(mean_angle, math.sqrt(math.pi / 2)) # Normal Distribution with mean mean_angle and sd=sqrt(90deg)
+        else:
+            angle = random.random() * 2 * math.pi
+        pos = np.array([distance, 0])
+        rot_matr = np.array([[np.cos(angle), -np.sin(angle)],
+                             [np.sin(angle), np.cos(angle)]])
+        pos = np.matmul(pos, rot_matr)
+        pos = np.array([*pos, height])
+        return center + pos
 
 
 
@@ -284,16 +288,6 @@ class PackTask(BaseTask):
     def calculate_metrics(self) -> None:
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
-        
-        # # Move Camera
-        # gripper_to_start = np.linalg.norm(START_TABLE_CENTER - gripper_pos)
-        # gripper_to_dest = np.linalg.norm(DEST_BOX_POS - gripper_pos)
-        # curr_cam_pos = self._camera.get_world_pose()[0]
-        # closer_to_dest = gripper_to_dest < gripper_to_start
-        # new_cam_pose = self.cam_dest_pos if closer_to_dest else self.cam_start_pos
-        # if not np.array_equal(new_cam_pose, curr_cam_pos):
-        #     # cam_target = DEST_BOX_POS if closer_to_dest else START_TABLE_CENTER
-        #     self.__move_camera(new_cam_pose, ROBOT_POS)
 
         self.step += 1
         if self.step < 20:
@@ -310,10 +304,11 @@ class PackTask(BaseTask):
                 reward += 50 * MAX_STEP_PUNISHMENT
                 self.stage = 1
         elif self.stage == 1:
-            part_to_dest = np.linalg.norm(DEST_BOX_POS - part_pos) * 100 # In cm
-            if 0.1 < part_to_dest: # Part reached box
+            dest_box_pos = self.part.get_world_pose()[0]
+            part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
+            if 10 < part_to_dest:
                 reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
-            else:
+            else: # Part reached box
                 # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
                 ideal_part = self._get_closest_part(part_pos)
                 pos_error = ((part_pos - ideal_part[0])**2).mean()
@@ -338,6 +333,7 @@ class PackTask(BaseTask):
         return reward, done
     
     def _get_closest_part(self, pos):
+        pos -= self.box.get_world_pose()[0]
         closest_part = None
         min_dist = 10000000
         for part in IDEAL_PACKAGING:
