@@ -250,8 +250,9 @@ class PackTask(BaseTask):
             
             # Vectorised One-Hot-Encoding
             for label, path in img_seg_info_dict.items():
+                label = int(label)
                 mask = (img_seg == label) # creates a bool matrix of an element wise comparison
-                if path == self._self._robot_path:
+                if path == self._robot_path:
                     one_hot_img_seg[:, :, 0] = mask
                 elif path.startswith(self._parts_path):
                     one_hot_img_seg[:, :, 1] = mask

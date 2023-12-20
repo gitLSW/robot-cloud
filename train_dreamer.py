@@ -44,7 +44,6 @@ logger = embodied.Logger(step, [
 # env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.gym.kit')
 env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # env = DreamerEnv(headless=True, enable_viewport=True)
-env._world.scene.add_default_ground_plane()
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 sim_s_step_freq = 60
