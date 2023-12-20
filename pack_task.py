@@ -59,9 +59,12 @@ PARTS_PATH = 'World/Parts'
 PARTS_SOURCE = START_TABLE_CENTER + np.array([0, 0, 0.05])
 # NUM_PARTS = 5
 
-CAMERA_PATH = 'World/Camera'
 IMG_RESOLUTION = (128, 128)
+
+CAMERA_PATH = 'World/Camera'
 CAM_TARGET_OFFSET = (2.5, 2) # Distance and Height
+CAM_MEAN_ANGLE = math.pi # Box=math.pi / 2, Table=3 * math.pi / 2
+
 # CAMERA_POS_START = np.array([-2, 2, 2.5])
 # CAMERA_POS_DEST = np.array([2, -2, 2.5])
 
@@ -158,8 +161,7 @@ class PackTask(BaseTask):
         setRigidBody(self.part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
         self._task_objects[self._parts_path] = self.part
 
-        # Box=math.pi / 2, Table=3 * math.pi / 2
-        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=math.pi)
+        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=CAM_MEAN_ANGLE)
         self._camera = Camera(
             prim_path=self._camera_path,
             frequency=20,
@@ -170,8 +172,8 @@ class PackTask(BaseTask):
         self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
         self._task_objects[self._camera_path] = self._camera
 
-        # viewport = get_active_viewport()
-        # viewport.set_active_camera(self._camera_path)
+        viewport = get_active_viewport()
+        viewport.set_active_camera(self._camera_path)
 
         # set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
 
@@ -188,7 +190,7 @@ class PackTask(BaseTask):
         self._camera.initialize()
         self._camera.add_distance_to_image_plane_to_frame() # depth cam
         self._camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
-        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=3 * math.pi / 2)
+        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=CAM_MEAN_ANGLE)
         self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
 
         self.step = 0
@@ -212,7 +214,7 @@ class PackTask(BaseTask):
     def __get_cam_pos(self, center, distance, height, mean_angle = None):
         angle = None
         if mean_angle:
-            angle = np.random.normal(mean_angle, math.sqrt(math.pi / 2)) # Normal Distribution with mean mean_angle and sd=sqrt(90deg)
+            angle = np.random.normal(mean_angle, math.sqrt(math.pi / 16)) # Normal Distribution with mean mean_angle and sd=sqrt(10deg)
         else:
             angle = random.random() * 2 * math.pi
         pos = np.array([distance, 0])
