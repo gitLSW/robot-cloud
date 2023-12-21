@@ -33,10 +33,10 @@ logdir = embodied.Path(config.logdir)
 step = embodied.Counter()
 logger = embodied.Logger(step, [
     embodied.logger.TerminalOutput(),
+    # embodied.logger.TerminalOutput(config.filter),
     embodied.logger.JSONLOutput(logdir, 'metrics.jsonl'),
     embodied.logger.TensorBoardOutput(logdir),
-    #embodied.logger.WandBOutput(r".*",logdir, config),
-    # WandBOutputMy(r".*",logdir, config, name),
+    # embodied.logger.WandBOutput(logdir.name, config),
     # embodied.logger.MLFlowOutput(logdir.name),
 ])
 
