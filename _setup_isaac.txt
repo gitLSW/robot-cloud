@@ -6,6 +6,7 @@ Installation:
  4. In Omniverse install:
       - Isaac Sim
       - Nucleus -> Launch Local Server
+      - Streaming Client: https://docs.omniverse.nvidia.com/streaming-client/latest/user-manual.html
       - Recommended: Nucleus Navigator
  6. To Launch:
     1. First Launch Omniverse and connect to your local nucleus server.

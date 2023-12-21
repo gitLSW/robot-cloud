@@ -6,7 +6,7 @@ set -x
 
 # git clone https://github.com/danijar/dreamerv3.git
 
-# sed -i '/gym==0.19.0/d' dreamerv3/requirements.txt
+sed -i '/gym==0.19.0/d' dreamerv3/requirements.txt
 # Use _FIX_dreamer_setup.py instead of dreamerv3/setup.py
 # Use gym=0.22.2 instead of 0.19.0
 ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh dreamerv3/setup.py install
