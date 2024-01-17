@@ -6,6 +6,7 @@ tutorials
 dreamerv3
 logdir
 wandb
+temp
 
 # C extensions
 *.so

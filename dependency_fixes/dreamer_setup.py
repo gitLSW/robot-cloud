@@ -3,7 +3,7 @@ import pathlib
 import setuptools
 from setuptools import find_namespace_packages
 
-path = os.getcwd() + '/dreamerv3'
+path = os.getcwd() + '/temp'
 setuptools.setup(
     name='dreamerv3',
     version='1.5.0',

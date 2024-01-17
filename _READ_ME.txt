@@ -1,10 +1,10 @@
-Installation:
- 1. Install ROS Humble: https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
- 2. Install UR Description:
-    sudo apt-get install ros-humble-ur-description
- 3. Install Omniverse: https://developer.nvidia.com/isaac-sim
- 4. In Omniverse install:
-      - Isaac Sim
+For Docker Install: https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_container.html
+
+Omniverse Installation:
+ 0. sudo apt install libfuse2
+ 1. Install Omniverse: https://developer.nvidia.com/isaac-sim
+ 2. In Omniverse install:
+      - Isaac Sims
       - Nucleus -> Launch Local Server
       - Streaming Client: https://docs.omniverse.nvidia.com/streaming-client/latest/user-manual.html
       - Recommended: Nucleus Navigator
@@ -19,16 +19,16 @@ Installation:
     		Re-install Nucleus
       - To find the Isaac Assets navigate using the Nucleus Navigator to:
             localhost/NVIDIA/Assets/Isaac
-    2.Start your Isaac Python Scripts:
-    	~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh PATH/TO/CODE.py
+    2. Run: bash _setup.sh
+    3.Start your Isaac Python Scripts: isaac PATH/TO/CODE.py
 
 
 Convenience:
  - Set the Interpreter in VS to ~/.local/share/ov/pkg/isaac_sim-2023.1.0/python.sh
  - Add this to ~/.bashrc:
-    alias isaac="~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/python.sh"
-    alias isaacDir="open ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1"
-    alias isaacLog="open ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/logs/Kit/omni.isaac.sim.python.gym"
+alias isaac="~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh"
+alias isaacDir="open ~/.local/share/ov/pkg/isaac_sim-2023.1.1"
+alias isaacLog="open ~/.local/share/ov/pkg/isaac_sim-2023.1.1/kit/logs/Kit/omni.isaac.sim.python.gym"
     
     Now luanch with: isaac PATH/TO/CODE
 
@@ -36,8 +36,8 @@ Convenience:
 Info:
  - Isaac Defult Location:
    open ~/.local/share/ov/pkg/isaac_sim-2023.1.0
- - Isaac Kit: ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/kit/exts
- - Isaac Omni Extensions: ~/.local/share/ov/pkg/isaac_sim-2023.1.0-hotfix.1/exts
+ - Isaac Kit: ~/.local/share/ov/pkg/isaac_sim-2023.1.1/kit/exts
+ - Isaac Omni Extensions: ~/.local/share/ov/pkg/isaac_sim-2023.1.1/exts
  - Log Location:
    open ~/.local/share/ov/pkg/isaac_sim-2023.1.0/kit/logs/Kit/Isaac-Sim/2023.1/
  - Isaac Assets Import
