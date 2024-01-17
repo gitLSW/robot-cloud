@@ -5,6 +5,7 @@ __pycache__/
 tutorials
 dreamerv3
 logdir
+wandb
 
 # C extensions
 *.so
