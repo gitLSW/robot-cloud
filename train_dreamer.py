@@ -36,7 +36,7 @@ logger = embodied.Logger(step, [
     # embodied.logger.TerminalOutput(config.filter),
     embodied.logger.JSONLOutput(logdir, 'metrics.jsonl'),
     embodied.logger.TensorBoardOutput(logdir),
-    # embodied.logger.WandBOutput(logdir.name, config),
+    embodied.logger.WandBOutput(r".*", 'qwertyasd', 'robot-cloud', name, config),
     # embodied.logger.MLFlowOutput(logdir.name),
 ])
 
