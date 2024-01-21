@@ -3,8 +3,7 @@ git clone https://github.com/danijar/dreamerv3.git ./temp
 
 # Use latest gym version instead of 0.19.0
 # sed -i '/gym==0.19.0/d' dreamerv3/requirements.txt
-cp -f dependency_fixes/requirements.txt temp/requirements.txt
-~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install -r temp/requirements.txt
+~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install -r dependency_fixes/dreamer_requirements.txt
 
 # Use _FIX_dreamer_setup.py instead of dreamerv3/setup.py
 ~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh dependency_fixes/dreamer_setup.py install
