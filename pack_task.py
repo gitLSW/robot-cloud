@@ -27,7 +27,6 @@ import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
 from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup
-from light import Light
 
 # MESH_APPROXIMATIONS = {
 #         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
