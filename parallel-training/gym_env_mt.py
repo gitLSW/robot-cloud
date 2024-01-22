@@ -15,8 +15,8 @@ class GymTaskEnv(gym.Env):
     def reset(self):
         return self._env.reset(self.id)
 
-    def step(self):
-        return self._env.step(self.id)
+    def step(self, actions):
+        return self._env.step(actions, self.id)
 
 
 
@@ -69,7 +69,7 @@ class GymEnvMT(VecEnvBase):
             info(dict): Dictionary of extras data.
         """
 
-        if task.name in self._stepped_tasks:
+        if task_id in self._stepped_tasks:
             # Stop thread until all envs have stepped
             raise ValueError(f"Task {task_id} was already stepped in this timestep")
 
@@ -78,7 +78,7 @@ class GymEnvMT(VecEnvBase):
             raise ValueError(f"No task with id {task_id} can be found")
         
         self._stepped_tasks.append(task_id)
-
+        
         task.pre_physics_step(actions)
 
         if (len(self._stepped_tasks) == len(self._tasks)):
@@ -140,7 +140,7 @@ class GymEnvMT(VecEnvBase):
             rendering_dt (Optional[float]): dt for rendering. Defaults to 1/60s.
         """
         if self.tasks_initialized:
-            return [GymTaskEnv(task_id, self) for task_id in self._tasks.values()]
+            return [GymTaskEnv(task_id, self) for task_id in self._tasks.keys()]
         else:
             self.tasks_initialized = True
 
@@ -185,10 +185,12 @@ class GymEnvMT(VecEnvBase):
 
         if init_sim:
             self._world.reset()
+            for task in self._tasks.values():
+                task.reset()
         
         set_camera_view(eye=[0, 0, 3], target=offsets[0], camera_prim_path="/OmniverseKit_Persp")
 
-        return [GymTaskEnv(task_id, self) for task_id in self._tasks.values()]
+        return [GymTaskEnv(task_id, self) for task_id in self._tasks.keys()]
 
 
 

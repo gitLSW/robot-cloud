@@ -2,7 +2,7 @@ import os
 import math
 import random
 import numpy as np
-from pxr import Gf
+from pxr import Gf, UsdLux, Sdf
 from gymnasium import spaces
 
 from omni.isaac.core.utils.extensions import enable_extension
@@ -27,7 +27,7 @@ import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
 from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup
-
+from light import Light
 
 # MESH_APPROXIMATIONS = {
 #         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
@@ -46,6 +46,10 @@ ENV_PATH = "World/Env"
 
 ROBOT_PATH = 'World/UR10e'
 ROBOT_POS = np.array([0.0, 0.0, 0.0])
+
+LIGHT_PATH = 'World/Light'
+LIGHT_OFFSET = np.array([0, 0, 3])
+
 # 5.45, 3, 0
 START_TABLE_PATH = "World/StartTable"
 START_TABLE_POS = np.array([0.36, 0.8, 0])
@@ -86,6 +90,7 @@ class PackTask(BaseTask):
     """
     def __init__(self, name, max_steps, offset=None, sim_s_step_freq: int = 60) -> None:
         self._env_path = f"/{name}/{ENV_PATH}"
+        self._light_path = {"/{name}/{LIGHT_PATH}"}
         self._robot_path = f"/{name}/{ROBOT_PATH}"
         self._start_table_path = f"/{name}/{START_TABLE_PATH}"
         self._dest_box_path = f"/{name}/{DEST_BOX_PATH}"
@@ -117,6 +122,8 @@ class PackTask(BaseTask):
 
 
     def set_up_scene(self, scene) -> None:
+        print('SETUP TASK ', self.name)
+
         super().set_up_scene(scene)
 
         local_assets = os.getcwd() + '/assets'
@@ -131,6 +138,23 @@ class PackTask(BaseTask):
         
         # scene.add_default_ground_plane()
         
+        self.light = create_prim(
+            '/World/Light_' + self.name,
+            "SphereLight",
+            position=ROBOT_POS + LIGHT_OFFSET,
+            attributes={
+                "inputs:radius": 0.01,
+                "inputs:intensity": 5e3,
+                "inputs:color": (1.0, 0.0, 1.0)
+            }
+        )
+        
+        # self.light = UsdLux.SphereLight.Define(scene, Sdf.Path(self._light_path))
+        # self.light.CreateIntensityAttr(5e3)
+        # self.light.CreateColorTemperatureAttr([1.0, 1.0, 1.0])
+        # self.light.AddTranslateOp()
+        # self.light = XFormPrim(self._light_path, position=ROBOT_POS + LIGHT_OFFSET)
+
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
         self.table = XFormPrim(prim_path=self._start_table_path, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
@@ -172,8 +196,8 @@ class PackTask(BaseTask):
         self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
         self._task_objects[self._camera_path] = self._camera
 
-        viewport = get_active_viewport()
-        viewport.set_active_camera(self._camera_path)
+        # viewport = get_active_viewport()
+        # viewport.set_active_camera(self._camera_path)
 
         # set_camera_view(eye=ROBOT_POS + np.array([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
 
@@ -195,10 +219,8 @@ class PackTask(BaseTask):
 
         self.step = 0
         self.stage = 0
-        self.part.set_world_pose(PARTS_SOURCE)
+        self.part.set_world_pose(PARTS_SOURCE + self._offset)
         self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
-
-        self._move_task_objects_to_their_frame()
 
 
 
