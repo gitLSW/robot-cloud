@@ -9,3 +9,6 @@ rich
 ruamel.yaml
 tensorflow-cpu
 tensorflow_probability
+wandb
+moviepy
+imageio

@@ -1,4 +1,7 @@
 #!/bin/bash
+sudo apt update
+sudo apt upgrade
+sudo apt install libfuse2
 
 ISAAC_PATH='~/.local/share/ov/pkg/isaac_sim-2023.1.1'
 echo "export ISAAC_PATH='$ISAAC_PATH'" >> ~/.bashrc

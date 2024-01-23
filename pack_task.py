@@ -121,7 +121,7 @@ class PackTask(BaseTask):
 
 
     def set_up_scene(self, scene) -> None:
-        print('SETUP TASK ', self.name)
+        print('SETUP TASK', self.name)
 
         super().set_up_scene(scene)
 
