@@ -43,7 +43,7 @@ logger = embodied.Logger(step, [
 # Create Isaac environment and open Sim Window
 # env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # https://docs.omniverse.nvidia.com/isaacsim/latest/installation/manual_livestream_clients.html
-env = DreamerEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=True)
+env = DreamerEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 sim_s_step_freq = 60
