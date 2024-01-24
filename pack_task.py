@@ -135,18 +135,16 @@ class PackTask(BaseTask):
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
         # add_reference_to_stage(warehouse_path, self._env_path)
         
-        # scene.add_default_ground_plane()
-        
-        self.light = create_prim(
-            '/World/Light_' + self.name,
-            "SphereLight",
-            position=ROBOT_POS + LIGHT_OFFSET,
-            attributes={
-                "inputs:radius": 0.01,
-                "inputs:intensity": 5e3,
-                "inputs:color": (1.0, 0.0, 1.0)
-            }
-        )
+        # self.light = create_prim(
+        #     '/World/Light_' + self.name,
+        #     "SphereLight",
+        #     position=ROBOT_POS + LIGHT_OFFSET,
+        #     attributes={
+        #         "inputs:radius": 0.01,
+        #         "inputs:intensity": 5e3,
+        #         "inputs:color": (1.0, 0.0, 1.0)
+        #     }
+        # )
 
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
@@ -213,8 +211,9 @@ class PackTask(BaseTask):
         self.step = 0
         self.stage = 0
         self.part.set_world_pose(PARTS_SOURCE + self._offset)
-        default_pose = np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
-        self.robot.set_joint_positions(positions=default_pose)
+        default_pose = np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0, 0])
+        self.robot.gripper.close()
+        self.robot.set_joint_positions(positions=default_pose[0:6])
 
         return {
             'image': np.zeros((*IMG_RESOLUTION, 7)),
@@ -309,9 +308,6 @@ class PackTask(BaseTask):
     stage = 0
     step = 0
     def calculate_metrics(self) -> None:
-        if (270 < self.step):
-            print(self.step)
-
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
 
@@ -332,6 +328,7 @@ class PackTask(BaseTask):
         elif self.stage == 1:
             dest_box_pos = self.part.get_world_pose()[0]
             part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
+            print(part_to_dest)
             if 10 < part_to_dest:
                 reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
             else: # Part reached box
@@ -340,8 +337,10 @@ class PackTask(BaseTask):
                 pos_error = ((part_pos - ideal_part[0])**2).mean()
                 rot_error = ((part_rot - ideal_part[1])**2).mean()
 
-                print('POS AND ROT ERROR', pos_error, rot_error)
-                reward += pos_error + rot_error
+                print('PART REACHED BOX')
+                print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
+                reward -= pos_error + rot_error
+                done = True
         
 
         # End successfully if all parts are in the Box
@@ -353,7 +352,7 @@ class PackTask(BaseTask):
                 for _ in range(10):
                     print('END REWARD:', reward)
                 reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-                self.reset()
+                # self.reset()
                 done = True
 
         return reward, done

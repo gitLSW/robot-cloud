@@ -67,23 +67,29 @@ class GymEnv(VecEnvBase):
 
         observations = self._task.get_observations()
         rewards, done = self._task.calculate_metrics()
-        # terminated = self._task.is_done()
-        # truncated = self._task.is_done() * 0
+        truncated = done * 0
         info = {}
 
-        return observations, rewards, done, info
+        return observations, rewards, done, truncated, info
     
 
 
-    def reset(self, seed=None, options=None):
-        """Resets the task and updates observations.
+class DreamerEnv(GymEnv):
+    def __init__(
+        self,
+        headless: bool,
+        sim_device: int = 0,
+        enable_livestream: bool = False,
+        enable_viewport: bool = False,
+        launch_simulation_app: bool = True,
+        experience: str = None,
+    ) -> None:
+        super().__init__(headless, sim_device, enable_livestream, enable_viewport, launch_simulation_app, experience)
 
-        Args:
-            seed (Optional[int]): Seed.
-            options (Optional[dict]): Options as used in gymnasium.
-        Returns:
-            observations(Union[numpy.ndarray, torch.Tensor]): Buffer of observation data.
-            info(dict): Dictionary of extras data.
-        """
+    def step(self, actions):
+        observations, rewards, done, truncated, info = super().step(actions)
+        return observations, rewards, done, info
+
+    def reset(self, seed=None, options=None):
         observations, info = super().reset(seed, options)
         return observations

@@ -10,11 +10,12 @@ SIM_STEP_FREQ_HZ = 60
 # Create Isaac environment and open Sim Window
 # env = GymEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # https://docs.omniverse.nvidia.com/isaacsim/latest/installation/manual_livestream_clients.html
-env = GymEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
+env = GymEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=SIM_STEP_FREQ_HZ)
 env.set_task(task, backend="numpy", rendering_dt=1 / SIM_STEP_FREQ_HZ)
+env._world.scene.add_default_ground_plane()
 
 # The noise objects for DDPG
 n_actions = env.action_space.shape[-1]

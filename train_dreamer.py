@@ -2,7 +2,7 @@ import os
 import dreamerv3
 from dreamerv3 import embodied
 from embodied.envs import from_gym
-from gym_env import GymEnv
+from gym_env import DreamerEnv
 
 MODEL_NAME = "Dreamer"
 MAX_STEPS_PER_EPISODE = 300
@@ -44,7 +44,7 @@ logger = embodied.Logger(step, [
 # Create Isaac environment and open Sim Window
 # env = GymEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # https://docs.omniverse.nvidia.com/isaacsim/latest/installation/manual_livestream_clients.html
-env = GymEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
+env = DreamerEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=SIM_STEP_FREQ_HZ)
