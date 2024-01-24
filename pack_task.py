@@ -213,8 +213,8 @@ class PackTask(BaseTask):
         self.step = 0
         self.stage = 0
         self.part.set_world_pose(PARTS_SOURCE + self._offset)
-        default_pose = np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0, 0])
-        self.robot.gripper.close()
+        default_pose = np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0, 1])
+        self.robot.gripper.open()
         self.robot.set_joint_positions(positions=default_pose[0:6])
 
         return {
@@ -310,8 +310,7 @@ class PackTask(BaseTask):
     stage = 0
     step = 0
     def calculate_metrics(self) -> None:
-        gripper = self.robot.gripper
-        gripper_pos = gripper.get_world_pose()[0]
+        gripper_pos = self.robot.gripper.get_world_pose()[0]
 
         self.step += 1
         if self.step < 20:
@@ -351,11 +350,12 @@ class PackTask(BaseTask):
         #     done = True
         
         if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
-                for _ in range(10):
-                    print('END REWARD:', reward)
                 reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
                 # self.reset()
                 done = True
+        
+        if done:
+            print('END REWARD TASK', self.name, ':', reward)
 
         return reward, done
     

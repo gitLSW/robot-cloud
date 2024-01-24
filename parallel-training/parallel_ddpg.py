@@ -1,4 +1,5 @@
 import os
+import math
 import numpy as np
 from gym_env_mt import GymEnvMT
 from stable_baselines3 import DDPG
@@ -14,9 +15,13 @@ env = GymEnvMT(max_steps = MAX_STEPS_PER_EPISODE,
                headless=False,
                experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 spacing = 5
-offsets = [[spacing, spacing, 0], [spacing, 0, 0], [spacing, -spacing, 0],
-           [0, spacing, 0], [0, 0, 0], [0, -spacing, 0],
-           [-spacing, spacing, 0], [-spacing, 0, 0], [-spacing, -spacing, 0]]
+offsets = []
+NUM_ENVS = 16
+tasks_per_side = math.sqrt(NUM_ENVS)
+for i in range(4):
+    for j in range(4):
+        offsets.append([i * spacing, j * spacing, 0])
+
 task_envs = env.init_tasks(offsets, backend="numpy")
 
 def make_env(env):
@@ -39,13 +44,13 @@ except:
                 # tau=,
                 # gamma=,
                 learning_starts=20,
-                 train_freq=MAX_STEPS_PER_EPISODE * 10, # How many steps til models get updated
+                train_freq=MAX_STEPS_PER_EPISODE * 5, # How many steps until models get updated
                 batch_size=256,
-                buffer_size=20000,
+                buffer_size=MAX_STEPS_PER_EPISODE * 5 * NUM_ENVS,
                 verbose=1)
 
 while (True):
-    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * 20, log_interval=10)
+    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * 10, log_interval=10)
     model.save("progress/ddpg")
 
 print('Finished Traing')

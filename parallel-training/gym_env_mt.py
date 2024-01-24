@@ -181,8 +181,8 @@ class GymEnvMT(VecEnvBase):
             self._world.reset()
             for task in self._tasks:
                 task.reset()
-        
-        set_camera_view(eye=[0, 0, 3], target=offsets[0], camera_prim_path="/OmniverseKit_Persp")
+                
+        set_camera_view(eye=[-4, -4, 6], target=offsets[len(offsets) - 1], camera_prim_path="/OmniverseKit_Persp")
 
         return [GymTaskEnv(task, self) for task in self._tasks]
 
