@@ -2,10 +2,11 @@ import os
 import dreamerv3
 from dreamerv3 import embodied
 from embodied.envs import from_gym
-from dreamer_env import DreamerEnv
+from gym_env import GymEnv
 
-name = "test"
+MODEL_NAME = "Dreamer"
 MAX_STEPS_PER_EPISODE = 300
+SIM_STEP_FREQ_HZ = 60
 
 # See configs.yaml for all options.
 config = embodied.Config(dreamerv3.configs['defaults'])
@@ -14,7 +15,7 @@ config = config.update(dreamerv3.configs['small'])
 # config = config.update(dreamerv3.configs['large'])
 #config = config.update(dreamerv3.configs['xlarge'])
 config = config.update({
-    'logdir': './logdir/' + name,
+    'logdir': './logdir/' + MODEL_NAME,
     'run.train_ratio': 64,
     'run.log_every': 30,  # Seconds
     'batch_size': 8,
@@ -36,19 +37,18 @@ logger = embodied.Logger(step, [
     # embodied.logger.TerminalOutput(config.filter),
     embodied.logger.JSONLOutput(logdir, 'metrics.jsonl'),
     embodied.logger.TensorBoardOutput(logdir),
-    embodied.logger.WandBOutput(r".*", 'qwertyasd', 'robot-cloud', name, config),
+    embodied.logger.WandBOutput(r".*", 'qwertyasd', 'robot-cloud', MODEL_NAME, config),
     # embodied.logger.MLFlowOutput(logdir.name),
 ])
 
 # Create Isaac environment and open Sim Window
-# env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
+# env = GymEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # https://docs.omniverse.nvidia.com/isaacsim/latest/installation/manual_livestream_clients.html
-env = DreamerEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
+env = GymEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
-sim_s_step_freq = 60
-task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=sim_s_step_freq)
-env.set_task(task, backend="numpy", rendering_dt=1 / sim_s_step_freq)
+task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=SIM_STEP_FREQ_HZ)
+env.set_task(task, backend="numpy", rendering_dt=1 / SIM_STEP_FREQ_HZ)
 # env.reset()
 
 env = from_gym.FromGym(env, obs_key='image')

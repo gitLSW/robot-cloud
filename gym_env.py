@@ -1,7 +1,7 @@
 from omni.isaac.gym.vec_env import VecEnvBase
 
 
-class DreamerEnv(VecEnvBase):
+class GymEnv(VecEnvBase):
     """This class provides a base interface for connecting RL policies with task implementations.
     APIs provided in this interface follow the interface in gym.Env.
     This class also provides utilities for initializing simulation apps, creating the World,

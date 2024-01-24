@@ -19,4 +19,4 @@ rm -rf temp
 
 cp -f dependency_fixes/logger.py dreamerv3/embodied/core/logger.py
 
-sudo apt install lffmpeg
+sudo apt install ffmpeg

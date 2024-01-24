@@ -42,7 +42,6 @@ logger = embodied.Logger(step, [
 ])
 
 # Create Isaac environment and open Sim Window
-# env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.gym.kit')
 env = GymEnvMT(max_steps = MAX_STEPS_PER_EPISODE,
                sim_s_step_freq = 60,
                headless=False,

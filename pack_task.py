@@ -147,12 +147,6 @@ class PackTask(BaseTask):
                 "inputs:color": (1.0, 0.0, 1.0)
             }
         )
-        
-        # self.light = UsdLux.SphereLight.Define(scene, Sdf.Path(self._light_path))
-        # self.light.CreateIntensityAttr(5e3)
-        # self.light.CreateColorTemperatureAttr([1.0, 1.0, 1.0])
-        # self.light.AddTranslateOp()
-        # self.light = XFormPrim(self._light_path, position=ROBOT_POS + LIGHT_OFFSET)
 
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
@@ -219,8 +213,13 @@ class PackTask(BaseTask):
         self.step = 0
         self.stage = 0
         self.part.set_world_pose(PARTS_SOURCE + self._offset)
-        self.robot.set_joint_positions(positions=np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
+        default_pose = np.array([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
+        self.robot.set_joint_positions(positions=default_pose)
 
+        return {
+            'image': np.zeros((*IMG_RESOLUTION, 7)),
+            'vector': default_pose
+        }
 
 
     def __move_camera(self, position, target):
@@ -310,6 +309,9 @@ class PackTask(BaseTask):
     stage = 0
     step = 0
     def calculate_metrics(self) -> None:
+        if (270 < self.step):
+            print(self.step)
+
         gripper = self.robot.gripper
         gripper_pos = gripper.get_world_pose()[0]
 
