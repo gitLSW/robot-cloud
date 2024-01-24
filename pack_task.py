@@ -47,7 +47,7 @@ ROBOT_PATH = 'World/UR10e'
 ROBOT_POS = np.array([0.0, 0.0, 0.0])
 
 LIGHT_PATH = 'World/Light'
-LIGHT_OFFSET = np.array([0, 0, 3])
+LIGHT_OFFSET = np.array([0, 0, 2])
 
 # 5.45, 3, 0
 START_TABLE_PATH = "World/StartTable"
@@ -80,6 +80,7 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.04664, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.10918, 0.0803], [0.072, 0.99, 0, 0])]
 
+# Seed Env or DDPG will always be the same !!
 class PackTask(BaseTask):
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
@@ -135,16 +136,16 @@ class PackTask(BaseTask):
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
         # add_reference_to_stage(warehouse_path, self._env_path)
         
-        # self.light = create_prim(
-        #     '/World/Light_' + self.name,
-        #     "SphereLight",
-        #     position=ROBOT_POS + LIGHT_OFFSET,
-        #     attributes={
-        #         "inputs:radius": 0.01,
-        #         "inputs:intensity": 5e3,
-        #         "inputs:color": (1.0, 0.0, 1.0)
-        #     }
-        # )
+        self.light = create_prim(
+            '/World/Light_' + self.name,
+            "SphereLight",
+            position=ROBOT_POS + LIGHT_OFFSET + self._offset,
+            attributes={
+                "inputs:radius": 0.01,
+                "inputs:intensity": 3e7,
+                "inputs:color": (1.0, 1.0, 1.0)
+            }
+        )
 
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
         table_path = local_assets + '/table_low.usd'
@@ -205,8 +206,9 @@ class PackTask(BaseTask):
         self._camera.initialize()
         self._camera.add_distance_to_image_plane_to_frame() # depth cam
         self._camera.add_instance_id_segmentation_to_frame() # simulated segmentation NN
-        cam_start_pos = self.__get_cam_pos(ROBOT_POS, *CAM_TARGET_OFFSET, mean_angle=CAM_MEAN_ANGLE)
-        self.__move_camera(position=cam_start_pos, target=ROBOT_POS)
+        robot_pos = ROBOT_POS + self._offset
+        cam_start_pos = self.__get_cam_pos(robot_pos, *CAM_TARGET_OFFSET, mean_angle=CAM_MEAN_ANGLE)
+        self.__move_camera(position=cam_start_pos, target=robot_pos)
 
         self.step = 0
         self.stage = 0
