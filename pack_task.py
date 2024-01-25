@@ -40,6 +40,7 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 #         "sdf": PhysxSchema.PhysxSDFMeshCollisionAPI,
 # }
 
+LEARNING_STARTS = 10
 
 ENV_PATH = "World/Env"
 
@@ -288,7 +289,7 @@ class PackTask(BaseTask):
 
 
     def pre_physics_step(self, actions) -> None:
-        if self.step < 20:
+        if self.step < LEARNING_STARTS:
             return
         
         # Rotate Joints
@@ -313,7 +314,7 @@ class PackTask(BaseTask):
         gripper_pos = self.robot.gripper.get_world_pose()[0]
 
         self.step += 1
-        if self.step < 20:
+        if self.step < LEARNING_STARTS:
             return 0, False
 
         done = False
@@ -329,7 +330,7 @@ class PackTask(BaseTask):
         elif self.stage == 1:
             dest_box_pos = self.part.get_world_pose()[0]
             part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
-            print(part_to_dest)
+            print('PART TO BOX:', part_to_dest)
             if 10 < part_to_dest:
                 reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
             else: # Part reached box
@@ -338,8 +339,8 @@ class PackTask(BaseTask):
                 pos_error = ((part_pos - ideal_part[0])**2).mean()
                 rot_error = ((part_rot - ideal_part[1])**2).mean()
 
-                print('PART REACHED BOX')
-                print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
+                print('PART REACHED BOX:', part_to_dest)
+                # print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
                 reward -= pos_error + rot_error
                 done = True
         

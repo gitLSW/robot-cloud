@@ -15,12 +15,13 @@ config = config.update(dreamerv3.configs['small'])
 # config = config.update(dreamerv3.configs['large'])
 #config = config.update(dreamerv3.configs['xlarge'])
 config = config.update({
-    'logdir': './logdir/' + MODEL_NAME,
+    'logdir': './progress/' + MODEL_NAME,
     'run.train_ratio': 64,
     'run.log_every': 30,  # Seconds
     'batch_size': 8,
     'batch_length': 16,
-    'jax.prealloc': False,
+    'jax.prealloc': True,
+    'jax.debug': True,
     'encoder.mlp_keys': 'vector',
     'decoder.mlp_keys': 'vector',
     'encoder.cnn_keys': 'image',
@@ -44,7 +45,7 @@ logger = embodied.Logger(step, [
 # Create Isaac environment and open Sim Window
 # env = GymEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 # https://docs.omniverse.nvidia.com/isaacsim/latest/installation/manual_livestream_clients.html
-env = DreamerEnv(headless=True, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
+env = DreamerEnv(headless=False, experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit', enable_livestream=False)
 
 from pack_task import PackTask # Cannot be imported before Sim has started
 task = PackTask(name="Pack", max_steps=MAX_STEPS_PER_EPISODE, sim_s_step_freq=SIM_STEP_FREQ_HZ)
