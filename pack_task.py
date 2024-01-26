@@ -72,7 +72,7 @@ CAM_MEAN_ANGLE = math.pi # Box=math.pi / 2, Table=3 * math.pi / 2
 # CAMERA_POS_START = np.array([-2, 2, 2.5])
 # CAMERA_POS_DEST = np.array([2, -2, 2.5])
 
-MAX_STEP_PUNISHMENT = 10
+MAX_STEP_PUNISHMENT = 300
 
 IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, -0.14044, 0.0803], [0.072, 0.99, 0, 0]),
@@ -323,20 +323,20 @@ class PackTask(BaseTask):
         part_pos, part_rot = self.part.get_world_pose()
         if self.stage == 0:
             gripper_to_part = np.linalg.norm(part_pos - gripper_pos) * 100 # In cm
-            reward -= max(gripper_to_part, MAX_STEP_PUNISHMENT)
+            reward -= gripper_to_part
             if START_TABLE_HEIGHT + 0.03 < part_pos[2]: # Part was picked up
-                reward += 50 * MAX_STEP_PUNISHMENT
+                reward += MAX_STEP_PUNISHMENT
                 self.stage = 1
         elif self.stage == 1:
             dest_box_pos = self.part.get_world_pose()[0]
             part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
             print('PART TO BOX:', part_to_dest)
             if 10 < part_to_dest:
-                reward -= max(part_to_dest, MAX_STEP_PUNISHMENT)
+                reward -= part_to_dest
             else: # Part reached box
                 # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
                 ideal_part = self._get_closest_part(part_pos)
-                pos_error = ((part_pos - ideal_part[0])**2).mean()
+                pos_error = np.linalg.norm(part_pos - ideal_part[0]) * 100
                 rot_error = ((part_rot - ideal_part[1])**2).mean()
 
                 print('PART REACHED BOX:', part_to_dest)

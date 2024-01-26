@@ -36,32 +36,26 @@ n_actions = env.action_space.shape[-1]
 action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
 
+ddpg_config = {
+    'learning_starts': 0,
+    'action_noise': action_noise,
+    'learning_rate': 0.001,
+    'tau': 0.005,
+    'gamma': 0.99,
+    'tensorboard_log': "./progress/ddpg-log/",
+    'learning_starts': 0,
+    'train_freq': MAX_STEPS_PER_EPISODE * NUM_ENVS, # How many steps until models get updated
+    'batch_size': 256,
+    'buffer_size': MAX_STEPS_PER_EPISODE * NUM_ENVS,
+    'verbose': 1
+}
 model = None
 try:
-    model = DDPG.load("progress/ddpg", env, print_system_info=True,
-                custom_objects={
-                    'action_noise': action_noise,
-                    'tensorboard_log': "./progress/ddpg-log/",
-                    'learning_starts': 0,
-                    'train_freq': MAX_STEPS_PER_EPISODE * NUM_ENVS, # How many steps until models get updated
-                    'batch_size': 256,
-                    'buffer_size': MAX_STEPS_PER_EPISODE * NUM_ENVS,
-                    'verbose': 1
-                })
+    model = DDPG.load("progress/ddpg", env, print_system_info=True, custom_objects=ddpg_config)
     # model.set_parameters(params)
 except:
     print('Failed to load model')
-    model = DDPG("MultiInputPolicy", env,
-        action_noise=action_noise,
-        # learning_rate=
-        # tau=,
-        # gamma=,
-        tensorboard_log="./progress/ddpg-log/",
-        learning_starts=0,
-        train_freq=MAX_STEPS_PER_EPISODE * NUM_ENVS, # How many steps until models get updated
-        batch_size=256,
-        buffer_size=MAX_STEPS_PER_EPISODE * NUM_ENVS,
-        verbose=1)
+    model = DDPG("MultiInputPolicy", env, **ddpg_config)
 
 
 
@@ -79,7 +73,7 @@ except:
 # model.set_logger(logger)
 
 while (True):
-    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * NUM_ENVS, log_interval=NUM_ENVS, tb_log_name='DDPG')
+    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * NUM_ENVS * 2, log_interval=NUM_ENVS, tb_log_name='DDPG')
     print('Saving model')
     model.save("progress/ddpg")
 
