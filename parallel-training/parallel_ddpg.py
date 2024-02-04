@@ -51,7 +51,7 @@ ddpg_config = {
 }
 model = None
 try:
-    model = DDPG.load("progress/ddpg", env, print_system_info=True, custom_objects=ddpg_config)
+    model = DDPG.load("progress/ddpg-touch", env, print_system_info=True, custom_objects=ddpg_config)
     # model.set_parameters(params)
 except:
     print('Failed to load model')
@@ -73,9 +73,9 @@ except:
 # model.set_logger(logger)
 
 while (True):
-    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * NUM_ENVS * 2, log_interval=NUM_ENVS, tb_log_name='DDPG')
+    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * 2, log_interval=NUM_ENVS, tb_log_name='DDPG')
     print('Saving model')
-    model.save("progress/ddpg")
+    model.save("progress/ddpg-touch")
 
 print('Finished Traing')
 
