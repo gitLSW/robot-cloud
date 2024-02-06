@@ -12,6 +12,7 @@ enable_extension("omni.isaac.sensor")
 # from omni.importer.urdf import _urdf
 from omni.isaac.sensor import Camera
 from omni.isaac.universal_robots.ur10 import UR10
+from omni.isaac.universal_robots import KinematicsSolver
 # from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
 
 import omni.isaac.core.utils.prims as prims_utils
@@ -28,6 +29,7 @@ import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
 from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup
+from scipy.spatial.transform import Rotation as R
 
 # MESH_APPROXIMATIONS = {
 #         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
@@ -68,6 +70,7 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, -0.01597, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.04664, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.10918, 0.0803], [0.072, 0.99, 0, 0])]
+NUMBER_PARTS = len(IDEAL_PACKAGING)
 
 # Seed Env or DDPG will always be the same !!
 class PackTask(BaseTask):
@@ -94,15 +97,14 @@ class PackTask(BaseTask):
         self.max_steps = max_steps
 
         self.observation_space = spaces.Dict({
-            # The first 6 Components denote the current joint rotations of the robot as a fraction of the max turning angle of each joint.
-            # The 7th component denotes the gripper state as a boolean where 1 means the grippper is closed and -1 means it is open.
-            'joints': spaces.Box(low=-1, high=1, shape=(7,)),
-            # The last 7 componets are the  the forces applied to the robot at each joint
-            'forces': spaces.Box(low=-1, high=1, shape=(8, 6)),
+            'gripper_state': spaces.Box(low=-3, high=-3, shape=(8,)),
+            # 'forces': spaces.Box(low=-1, high=1, shape=(8, 6)), # Forces on the Joints
+            'box_state': spaces.Box(low=-3, high=-3, shape=(2, NUMBER_PARTS)), # Pos and Rot Distance of each part currently placed in Box compared to currently gripped part
+            'part_state': spaces.Box(low=-3, high=-3, shape=(7,))
         })
 
-        # The NN outputs the change in rotation for each joint as a fraction of the max rot speed per timestep (=__joint_rot_max)
-        self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float)
+        # End Effector Pose 
+        self.action_space = spaces.Box(low=-1, high=1, shape=(8,)), # Delta Gripper Pose & gripper open / close
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -145,7 +147,7 @@ class PackTask(BaseTask):
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
-        self.robot = UR10(prim_path=self._robot_path, name='UR16e', position=ROBOT_POS, attach_gripper=True)
+        self.robot = UR10(prim_path=self._robot_path, name='UR10', position=ROBOT_POS, attach_gripper=True)
         self._task_objects[self._robot_path] = self.robot
         # self.robot.set_joints_default_state(positions=torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]))
 
@@ -175,27 +177,58 @@ class PackTask(BaseTask):
 
         # if not self.robot.handles_initialized():
         self.robot.initialize()
+        self.kinematics_solver = KinematicsSolver(robot_articulation=self.robot, attach_gripper=True)
 
         self.step = 0
         self.part.set_world_pose(PART_SOURCE + self._offset)
-        default_pose = np.array([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0, -1])
+        default_pose = np.array([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
+        self.robot.set_joint_positions(positions=default_pose)
+
+        gripper_pos, gripper_rot = self.robot.gripper.get_world_pose()
         self.robot.gripper.open()
-        self.robot.set_joint_positions(positions=default_pose[0:6])
 
         return {
-            'forces': np.zeros((8, 6)),
-            'joints': default_pose
+            'gripper_state': np.array(gripper_pos + gripper_rot + [-1]),
+            'box_state': default_pose,
+            'part_state': self.part.get_world_pose()
         }
 
 
+    placed_parts = []
     def get_observations(self):
-        # TODO: CHECK IF get_joint_positions ACCURATELY HANDLES ROTATIONS ABOVE 360deg AND NORMALIZE FOR MAX ROBOT ROTATION (+/-360deg)
-        robot_state = np.append(self.robot.get_joint_positions() / 2 * math.pi, 2 * float(self.robot.gripper.is_closed()) - 1)
-        forces = self.robot.get_measured_joint_forces()
+        gripper = self.robot.gripper
+        gripper_pose_kin = self.kinematics_solver.compute_end_effector_pose()
+        gripper_pos, gripper_rot = gripper.get_world_pose()
+        gripper_pos -= self.robot.get_world_pose()
+        gripper_closed = 2 * float(gripper.is_closed()) - 1
 
+        print('COMPARE', gripper_pose_kin, gripper.get_world_pose())
+
+        # A 2D Array where each entry is the poses of the parts in the box
+        part_pos , part_rot= self.part.get_world_pose()
+        part_pos -= self.box.get_world_pose()[0]
+        box_state = []
+        selection = IDEAL_PACKAGING
+        for part in self.placed_parts:
+            ideal_rot = None
+            ideal_part_index = None
+            min_dist = 10000000
+            for index, part in enumerate(selection):
+                dist = np.linalg.norm(part[0] - part_pos)
+                if dist < min_dist:
+                    ideal_rot = part[1]
+                    ideal_part_index = index
+                    min_dist = dist
+            selection.remove(ideal_part_index)
+            rot_dist = self._shortest_rot_dist(part_rot, ideal_rot)
+            box_state.append([min_dist, rot_dist])
+
+        # forces = self.robot.get_measured_joint_forces()
         return {
-            'forces': forces,
-            'joints': robot_state
+            'gripper_state': np.array(gripper_pos + gripper_rot + [gripper_closed]),
+            'bos_state': box_state,
+            # 'forces': forces,
+            'part_state': np.array(part_pos + part_rot)
         }
 
 
@@ -213,12 +246,15 @@ class PackTask(BaseTask):
             return
         
         # Rotate Joints
-        joint_rots = self.robot.get_joint_positions()
-        joint_rots += np.array(actions[0:6]) * self.__joint_rot_max
-        self.robot.set_joint_positions(positions=joint_rots)
-        # Open or close Gripper
+        gripper_pos = actions[0:2]
+        gripper_rot = actions[3:6]
+        gripper_action = actions[7]
+
+        movement, success = self.kinematics_solver.compute_inverse_kinematics(gripper_pos, gripper_rot)
+        if success:
+            self.robot.apply_action(movement)
+
         is_closed = gripper.is_closed()
-        gripper_action = actions[6]
         if 0.9 < gripper_action and not is_closed:
             gripper.close()
         elif gripper_action < -0.9 and is_closed:
@@ -229,49 +265,48 @@ class PackTask(BaseTask):
     # Calculate Rewards
     step = 0
     def calculate_metrics(self) -> None:
-        gripper_pos = self.robot.gripper.get_world_pose()[0]
+        return 0, False
+        # gripper_pos = self.robot.gripper.get_world_pose()[0]
 
-        self.step += 1
-        if self.step < LEARNING_STARTS:
-            return 0, False
+        # self.step += 1
+        # if self.step < LEARNING_STARTS:
+        #     return 0, False
 
-        done = False
-        reward= 0
+        # done = False
+        # reward= 0
 
-        part_pos, part_rot = self.part.get_world_pose()
-        dest_box_pos = self.part.get_world_pose()[0]
-        part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
+        # part_pos, part_rot = self.part.get_world_pose()
+        # dest_box_pos = self.part.get_world_pose()[0]
+        # part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
 
-        print('PART TO BOX:', part_to_dest)
-        if 10 < part_to_dest:
-            reward -= part_to_dest
-        else: # Part reached box
-            # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-            ideal_part = self._get_closest_part(part_pos)
-            pos_error = np.linalg.norm(part_pos - ideal_part[0]) * 100
-            rot_error = ((part_rot - ideal_part[1])**2).mean()
+        # print('PART TO BOX:', part_to_dest)
+        # if 10 < part_to_dest:
+        #     reward -= part_to_dest
+        # else: # Part reached box
+        #     # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+        #     ideal_part = _get_closest_part(part_pos)
+        #     pos_error = np.linalg.norm(part_pos - ideal_part[0]) * 100
+        #     rot_error = ((part_rot - ideal_part[1])**2).mean()
 
-            print('PART REACHED BOX:', part_to_dest)
-            # print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
-            reward -= pos_error + rot_error
+        #     print('PART REACHED BOX:', part_to_dest)
+        #     # print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
+        #     reward -= pos_error + rot_error
 
-        # if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
-        #         reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-        #         done = True
+        # # if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
+        # #         reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+        # #         done = True
         
-        if done:
-            print('END REWARD TASK', self.name, ':', reward)
+        # if done:
+        #     print('END REWARD TASK', self.name, ':', reward)
 
-        return reward, done
+        # return reward, done
     
-    
-    def _get_closest_part(self, pos):
-        pos -= self.box.get_world_pose()[0]
-        closest_part = None
-        min_dist = 10000000
-        for part in IDEAL_PACKAGING:
-            dist = np.linalg.norm(part[0] - pos)
-            if dist < min_dist:
-                closest_part = part
-                min_dist = dist
-        return closest_part
+
+
+def _shortest_rot_dist(quat_1, quat_2):
+        quat_1 = R.from_quat(quat_1)
+        quat_2 = R.from_quat(quat_2)
+        if (np.dot(quat_1, quat_2) < 0):
+            return quat_1 * R.inv(-quat_2)
+        else:
+            return quat_1 * R.inv(quat_2)
