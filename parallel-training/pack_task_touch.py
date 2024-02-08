@@ -97,14 +97,14 @@ class PackTask(BaseTask):
         self.max_steps = max_steps
 
         self.observation_space = spaces.Dict({
-            'gripper_state': spaces.Box(low=-3, high=-3, shape=(8,)),
+            'gripper_state': spaces.Box(low=-3, high=3, shape=(8,)),
             # 'forces': spaces.Box(low=-1, high=1, shape=(8, 6)), # Forces on the Joints
-            'box_state': spaces.Box(low=-3, high=-3, shape=(2, NUMBER_PARTS)), # Pos and Rot Distance of each part currently placed in Box compared to currently gripped part
-            'part_state': spaces.Box(low=-3, high=-3, shape=(7,))
+            'box_state': spaces.Box(low=-3, high=3, shape=(NUMBER_PARTS, 2)), # Pos and Rot Distance of each part currently placed in Box compared to currently gripped part
+            'part_state': spaces.Box(low=-3, high=3, shape=(7,))
         })
 
         # End Effector Pose 
-        self.action_space = spaces.Box(low=-1, high=1, shape=(8,)), # Delta Gripper Pose & gripper open / close
+        self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=float) # Delta Gripper Pose & gripper open / close
 
         # trigger __init__ of parent class
         BaseTask.__init__(self, name=name, offset=offset)
@@ -187,10 +187,12 @@ class PackTask(BaseTask):
         gripper_pos, gripper_rot = self.robot.gripper.get_world_pose()
         self.robot.gripper.open()
 
+        worst_empty_box = np.full((NUMBER_PARTS, 2), [3, math.pi])
+
         return {
-            'gripper_state': np.array(gripper_pos + gripper_rot + [-1]),
-            'box_state': default_pose,
-            'part_state': self.part.get_world_pose()
+            'gripper_state': np.concatenate((gripper_pos, gripper_rot, [-1]), axis=0),
+            'box_state': worst_empty_box,
+            'part_state': np.concatenate(self.part.get_world_pose(), axis=0)
         }
 
 
@@ -199,17 +201,24 @@ class PackTask(BaseTask):
         gripper = self.robot.gripper
         gripper_pose_kin = self.kinematics_solver.compute_end_effector_pose()
         gripper_pos, gripper_rot = gripper.get_world_pose()
-        gripper_pos -= self.robot.get_world_pose()
+        gripper_pos -= self.robot.get_world_pose()[0]
         gripper_closed = 2 * float(gripper.is_closed()) - 1
 
-        print('COMPARE', gripper_pose_kin, gripper.get_world_pose())
+        # TODO: Was sollen wir verwenden ??!!
+        print('COMPARE:')
+        print(gripper_pose_kin)
+        print((gripper_pos, gripper_rot))
 
         # A 2D Array where each entry is the poses of the parts in the box
-        part_pos , part_rot= self.part.get_world_pose()
+        part_pos, part_rot= self.part.get_world_pose()
         part_pos -= self.box.get_world_pose()[0]
         box_state = []
         selection = IDEAL_PACKAGING
-        for part in self.placed_parts:
+        for i in range(NUMBER_PARTS):
+            if len(self.placed_parts) <= i:
+                box_state.append([3, math.pi])
+                continue
+            part = self.placed_parts[i]
             ideal_rot = None
             ideal_part_index = None
             min_dist = 10000000
@@ -225,15 +234,16 @@ class PackTask(BaseTask):
 
         # forces = self.robot.get_measured_joint_forces()
         return {
-            'gripper_state': np.array(gripper_pos + gripper_rot + [gripper_closed]),
-            'bos_state': box_state,
+            'gripper_state': np.concatenate((gripper_pos, gripper_rot, [gripper_closed]), axis=0),
+            'box_state': box_state,
             # 'forces': forces,
-            'part_state': np.array(part_pos + part_rot)
+            'part_state':  np.concatenate((part_pos, part_rot), axis=0)
         }
 
 
 
     def pre_physics_step(self, actions) -> None:
+        self.step += 1
         gripper = self.robot.gripper
         
         if self.step == LEARNING_STARTS -1:
@@ -246,11 +256,12 @@ class PackTask(BaseTask):
             return
         
         # Rotate Joints
-        gripper_pos = actions[0:2]
-        gripper_rot = actions[3:6]
+        gripper_pos = actions[0:3]
+        gripper_rot = actions[3:7]
         gripper_action = actions[7]
 
         movement, success = self.kinematics_solver.compute_inverse_kinematics(gripper_pos, gripper_rot)
+        print('success', success)
         if success:
             self.robot.apply_action(movement)
 
