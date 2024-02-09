@@ -61,8 +61,7 @@ DEST_BOX_PATH = "World/DestinationBox"
 DEST_BOX_POS = np.array([0, -0.65, FALLEN_PART_THRESHOLD])
 
 PART_PATH = 'World/Part'
-PART_HEIGHT = 0.5 + DEST_BOX_POS[2]
-PART_SOURCE = DEST_BOX_POS + np.array([0, 0, PART_HEIGHT])
+PART_SOURCE = DEST_BOX_POS + np.array([0, 0, 0.4])
 # NUM_PARTS = 5
 PART_PILLAR_PATH = "World/Pillar"
 
@@ -78,6 +77,8 @@ NUMBER_PARTS = len(IDEAL_PACKAGING)
 
 # Seed Env or DDPG will always be the same !!
 class PackTask(BaseTask):
+    kinematics_solver = None
+    
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
     Args:
@@ -158,8 +159,8 @@ class PackTask(BaseTask):
         self.part_pillar = objs.FixedCuboid(
             name=self._pillar_path,
             prim_path=self._pillar_path,
-            position=DEST_BOX_POS,
-            scale=np.array([0.2, 0.2, PART_HEIGHT - 0.05])
+            position=[0, 0, -100],
+            scale=np.array([1, 1, 1])
         )
         scene.add(self.part_pillar)
         self._task_objects[self._pillar_path] = self.part_pillar
@@ -181,12 +182,18 @@ class PackTask(BaseTask):
 
         # if not self.robot.handles_initialized():
         self.robot.initialize()
-        self.kinematics_solver = KinematicsSolver(robot_articulation=self.robot, attach_gripper=True)
-
-        self.step = 0
-        self.part.set_world_pose(PART_SOURCE + self._offset)
         default_pose = np.array([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
         self.robot.set_joint_positions(positions=default_pose)
+
+        if not self.kinematics_solver:
+            self.kinematics_solver = KinematicsSolver(robot_articulation=self.robot, attach_gripper=True)
+
+        self.step = 0
+
+        gripper_pos = np.array(self.robot.gripper.get_world_pose()[0]) - np.array([0, 0, 0.25])
+        self.part_pillar.set_world_pose([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
+        self.part_pillar.set_local_scale([1, 1, gripper_pos[2]])
+        self.part.set_world_pose(gripper_pos, [0, 1, 0, 0])
 
         # gripper_pos, gripper_rot = self.robot.gripper.get_world_pose()
         # gripper_pos -= self.robot.get_world_pose()[0]
@@ -280,11 +287,11 @@ class PackTask(BaseTask):
     def pre_physics_step(self, actions) -> None:
         gripper = self.robot.gripper
         
-        if self.step == LEARNING_STARTS -1:
+        if self.step == LEARNING_STARTS - 1:
             gripper.close()
             return
         elif self.step == LEARNING_STARTS:
-            prims_utils.delete_prim(self._pillar_path)
+            self.part_pillar.set_world_pose([0, 0, -100])
             return
         elif self.step < LEARNING_STARTS:
             return
@@ -316,7 +323,14 @@ class PackTask(BaseTask):
         # Success: 
         part_pos, part_rot = self.part.get_world_pose()
 
-        if part_pos[2] < FALLEN_PART_THRESHOLD or self.max_steps < self.step:
+        any_flipped = False
+        for part in self.placed_parts:
+            part_rot = part.get_world_pose()[1]
+            if _is_flipped(part_rot):
+                any_flipped = True
+                break
+
+        if part_pos[2] < FALLEN_PART_THRESHOLD or self.max_steps < self.step or any_flipped:
             return -MAX_STEP_PUNISHMENT, True
 
         box_state, _ = self.compute_box_state()
@@ -360,7 +374,36 @@ class PackTask(BaseTask):
 
         # return reward, done
     
+def _is_flipped(q1):
+    """
+    Bestimmt, ob die Rotation von q0 zu q1 ein "Umfallen" darstellt,
+    basierend auf einem Winkel größer als 60 Grad zwischen der ursprünglichen
+    z-Achse und ihrer Rotation.
 
+    :param q0: Ursprüngliches Quaternion.
+    :param q1: Neues Quaternion.
+    :return: True, wenn der Winkel größer als 60 Grad ist, sonst False.
+    """
+    q0 = np.array([0, 1, 0, 0])
+    # Initialer Vektor, parallel zur z-Achse
+    v0 = np.array([0, 0, 1])
+    
+    # Konvertiere Quaternions in Rotation-Objekte
+    rotation0 = R.from_quat(q0)
+    rotation1 = R.from_quat(q1)
+    
+    # Berechne die relative Rotation von q0 zu q1
+    q_rel = rotation1 * rotation0.inv()
+    
+    # Berechne den rotierten Vektor v1
+    v1 = q_rel.apply(v0)
+    
+    # Berechne den Winkel zwischen v0 und v1
+    cos_theta = np.dot(v0, v1) / (np.linalg.norm(v0) * np.linalg.norm(v1))
+    angle = np.arccos(np.clip(cos_theta, -1.0, 1.0)) * 180 / np.pi
+    
+    # Prüfe, ob der Winkel größer als 60 Grad ist
+    return angle > 60
 
 def _shortest_rot_dist(quat_1, quat_2):
     part_quat = Quaternion(quat_1)
