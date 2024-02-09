@@ -159,7 +159,7 @@ class GymEnvMT(VecEnvBase):
             stage_units_in_meters=1.0, rendering_dt=self.rendering_dt, backend=backend, sim_params=sim_params, device=device
         )
         # self._world._current_tasks = dict()
-        from pack_task_touch import PackTask
+        from pack_task_easy import PackTask
         from omni.isaac.core.utils.viewports import set_camera_view
 
         self._world.scene.add_default_ground_plane()

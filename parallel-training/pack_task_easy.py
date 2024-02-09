@@ -284,7 +284,7 @@ class PackTask(BaseTask):
             gripper.close()
             return
         elif self.step == LEARNING_STARTS:
-            # prims_utils.delete_prim(self._pillar_path)
+            prims_utils.delete_prim(self._pillar_path)
             return
         elif self.step < LEARNING_STARTS:
             return
@@ -297,8 +297,8 @@ class PackTask(BaseTask):
         gripper_rot = R.from_euler('xyz', gripper_rot_euler, degrees=False).as_quat()
         movement, success = self.kinematics_solver.compute_inverse_kinematics(gripper_pos, gripper_rot)
         # print('success', success)
-        # if success:
-            # self.robot.apply_action(movement)
+        if success:
+            self.robot.apply_action(movement)
 
         is_closed = gripper.is_closed()
         if 0.9 < gripper_action and not is_closed:
