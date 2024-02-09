@@ -49,17 +49,19 @@ LEARNING_STARTS = 10
 
 ENV_PATH = "World/Env"
 
+FALLEN_PART_THRESHOLD = 0.2
+
 ROBOT_PATH = 'World/UR10e'
-ROBOT_POS = np.array([0.0, 0.0, 0.2])
+ROBOT_POS = np.array([0.0, 0.0, FALLEN_PART_THRESHOLD])
 
 LIGHT_PATH = 'World/Light'
 LIGHT_OFFSET = np.array([0, 0, 2])
 
 DEST_BOX_PATH = "World/DestinationBox"
-DEST_BOX_POS = np.array([0, -0.65, 0.2])
+DEST_BOX_POS = np.array([0, -0.65, FALLEN_PART_THRESHOLD])
 
 PART_PATH = 'World/Part'
-PART_HEIGHT = 0.6
+PART_HEIGHT = 0.5 + DEST_BOX_POS[2]
 PART_SOURCE = DEST_BOX_POS + np.array([0, 0, PART_HEIGHT])
 # NUM_PARTS = 5
 PART_PILLAR_PATH = "World/Pillar"
@@ -157,7 +159,7 @@ class PackTask(BaseTask):
             name=self._pillar_path,
             prim_path=self._pillar_path,
             position=DEST_BOX_POS,
-            scale=np.array([0.2, 0.2, PART_HEIGHT])
+            scale=np.array([0.2, 0.2, PART_HEIGHT - 0.05])
         )
         scene.add(self.part_pillar)
         self._task_objects[self._pillar_path] = self.part_pillar
@@ -282,7 +284,7 @@ class PackTask(BaseTask):
             gripper.close()
             return
         elif self.step == LEARNING_STARTS:
-            prims_utils.delete_prim(self._pillar_path)
+            # prims_utils.delete_prim(self._pillar_path)
             return
         elif self.step < LEARNING_STARTS:
             return
@@ -292,11 +294,11 @@ class PackTask(BaseTask):
         gripper_rot_euler = actions[3:6]
         gripper_action = actions[6]
 
-        gripper_rot = R.from_euler('xyz', gripper_rot, degrees=False).as_quat()
+        gripper_rot = R.from_euler('xyz', gripper_rot_euler, degrees=False).as_quat()
         movement, success = self.kinematics_solver.compute_inverse_kinematics(gripper_pos, gripper_rot)
-        print('success', success)
-        if success:
-            self.robot.apply_action(movement)
+        # print('success', success)
+        # if success:
+            # self.robot.apply_action(movement)
 
         is_closed = gripper.is_closed()
         if 0.9 < gripper_action and not is_closed:
@@ -314,7 +316,7 @@ class PackTask(BaseTask):
         # Success: 
         part_pos, part_rot = self.part.get_world_pose()
 
-        if part_pos[2] < 0.2 or self.max_steps < self.step:
+        if part_pos[2] < FALLEN_PART_THRESHOLD or self.max_steps < self.step:
             return -MAX_STEP_PUNISHMENT, True
 
         box_state, _ = self.compute_box_state()
