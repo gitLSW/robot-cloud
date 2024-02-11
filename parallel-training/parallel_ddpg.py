@@ -3,9 +3,10 @@ import numpy as np
 from gym_env_mt import GymEnvMT
 from stable_baselines3 import DDPG
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common.logger import configure
-# from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
+from stable_baselines3.common.vec_env import DummyVecEnv, subproc_vec_env
+import wandb
+from wandb.integration.sb3 import WandbCallback
+
 
 MAX_STEPS_PER_EPISODE = 300
 SIM_STEP_FREQ_HZ = 60
@@ -42,41 +43,42 @@ ddpg_config = {
     'learning_rate': 0.001,
     'tau': 0.005,
     'gamma': 0.99,
-    'tensorboard_log': "./progress/ddpg-log/",
     'learning_starts': 0,
     'train_freq': MAX_STEPS_PER_EPISODE * NUM_ENVS, # How many steps until models get updated
     'batch_size': 256,
     'buffer_size': MAX_STEPS_PER_EPISODE * NUM_ENVS,
     'verbose': 1
 }
+
+name = 'ddpg-pack'
+run = wandb.init(
+    project=name,
+    config=ddpg_config,
+    sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+    # monitor_gym=True,  # auto-upload the videos of agents playing the game
+    # save_code=True,  # optional
+)
+ddpg_config['tensorboard_log'] = f"./progress/runs/{run.id}"
+
 model = None
 try:
-    model = DDPG.load("progress/ddpg-touch", env, print_system_info=True, custom_objects=ddpg_config)
+    model = DDPG.load(f"progress/{name}", env, print_system_info=True, custom_objects=ddpg_config)
     # model.set_parameters(params)
-except:
+except FileNotFoundError:
     print('Failed to load model')
+finally:
     model = DDPG("MultiInputPolicy", env, **ddpg_config)
 
-
-
-
-# model.__dict__.update({
-#                 learning_starts=0,
-#                 train_freq=MAX_STEPS_PER_EPISODE * NUM_ENVS, # How many steps until models get updated
-#                 batch_size=256,
-#                 buffer_size=MAX_STEPS_PER_EPISODE * NUM_ENVS,
-#                 verbose=1,
-# })
-
-# tmp_path = "progress/ddpg-log/"
-# logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
-# model.set_logger(logger)
-
 while (True):
-    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * 2, log_interval=NUM_ENVS, tb_log_name='DDPG')
+    model.learn(total_timesteps=MAX_STEPS_PER_EPISODE * 2, log_interval=NUM_ENVS, tb_log_name='DDPG',
+    callback=WandbCallback(
+        model_save_path=f"models/{run.id}",
+        verbose=2,
+    ))
     print('Saving model')
-    model.save("progress/ddpg-touch")
+    model.save("progress/ddpg")
 
+run.finish()
 print('Finished Traing')
 
 # env.close()
