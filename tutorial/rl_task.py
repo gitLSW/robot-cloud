@@ -71,7 +71,7 @@ class RLTask(RLTaskInterface):
         torch._C._jit_set_nvfuser_enabled(False)
 
         self.test = self._cfg["test"]
-        self._device = self._cfg["sim_device"]
+        self._device = self._cfg["sim_device"] # 'gpu' or 'cpu'
 
         # set up randomizer for DR
         self._dr_randomizer = Randomizer(self._cfg, self._task_cfg)

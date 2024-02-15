@@ -32,6 +32,8 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
+from omni.isaac.gym.tasks.rl_task import RLTaskInterface
+from omni.isaac.cloner import GridCloner
 
 # MESH_APPROXIMATIONS = {
 #         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
@@ -76,7 +78,7 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
 NUMBER_PARTS = len(IDEAL_PACKAGING)
 
 # Seed Env or DDPG will always be the same !!
-class PackTask(BaseTask):
+class PackTask(RLTaskInterface):
     kinematics_solver = None
     
     """
