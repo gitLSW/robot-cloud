@@ -13,7 +13,6 @@ task = PackTask(f"Task_name")
 env.set_task(task)
 
 env = OmniverseIsaacGymWrapper(env)
-
 env.run(TrainerMT)
 
 cfg = {"timesteps": 50000, "headless": False}
