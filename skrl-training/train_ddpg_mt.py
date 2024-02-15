@@ -16,6 +16,8 @@ from skrl.envs.wrappers.torch import OmniverseIsaacGymWrapper
 from omni.isaac.gym.vec_env import TaskStopException, VecEnvMT
 
 
+name = 'DDPG_Pack'
+
 # seed for reproducibility
 set_seed()  # e.g. `set_seed(42)` for fixed seed
 
@@ -68,7 +70,7 @@ sim_config = SimConfig({"test": False,
                         "multi_gpu": False,
                         "sim_device": "gpu",
                         "enable_livestream": False,
-                        "task": {"name": "CustomTask",
+                        "task": {"name": name,
                                     "physics_engine": "physx",
                                     "env": {"numEnvs": 512,
                                             "envSpacing": 1.5,
@@ -112,7 +114,7 @@ sim_config = SimConfig({"test": False,
 
 # import and setup custom task
 from pack_task import PackTask
-task = PackTask(fame="CustomTask", sim_config=sim_config, env=env)
+task = PackTask(name=name, sim_config=sim_config, env=env)
 env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True)
 
 # wrap the environment
@@ -171,3 +173,7 @@ threading.Thread(target=trainer.train).start()
 
 # The TraimerMT can be None, cause it is only used to stop the Sim
 env.run(trainer=None)
+
+
+
+# Logging: https://skrl.readthedocs.io/en/latest/intro/data.html
