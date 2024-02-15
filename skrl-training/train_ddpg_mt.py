@@ -4,6 +4,8 @@ import threading
 import torch
 import torch.nn as nn
 
+import wandb
+
 # import the skrl components to build the RL system
 from skrl.agents.torch.ddpg import DDPG, DDPG_DEFAULT_CONFIG
 from skrl.memories.torch import RandomMemory
@@ -135,45 +137,71 @@ models["critic"] = Critic(env.observation_space, env.action_space, device)
 models["target_critic"] = Critic(env.observation_space, env.action_space, device)
 
 
+
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
-cfg = DDPG_DEFAULT_CONFIG.copy()
-cfg["exploration"]["noise"] = OrnsteinUhlenbeckNoise(theta=0.15, sigma=0.1, base_scale=0.5, device=device)
-cfg["gradient_steps"] = 1
-cfg["batch_size"] = 4096
-cfg["discount_factor"] = 0.99
-cfg["polyak"] = 0.005
-cfg["actor_learning_rate"] = 5e-4
-cfg["critic_learning_rate"] = 5e-4
-cfg["random_timesteps"] = 80
-cfg["learning_starts"] = 80
-cfg["state_preprocessor"] = RunningStandardScaler
-cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
-# logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 800
-cfg["experiment"]["checkpoint_interval"] = 8000
-cfg["experiment"]["directory"] = "runs/torch/Ant"
+ddpg_cfg = DDPG_DEFAULT_CONFIG.copy()
+
+def merge(source, destination):
+    for key, value in source.items():
+        if isinstance(value, dict):
+            # get node or create one
+            node = destination.setdefault(key, {})
+            merge(value, node)
+        else:
+            destination[key] = value
+
+    return destination
+
+ddpg_cfg = merge({
+    "exploration": {
+        "noise": OrnsteinUhlenbeckNoise(theta=0.15, sigma=0.1, base_scale=0.5, device=device)
+    },
+    "gradient_steps": 1,
+    "batch_size": 4096,
+    "discount_factor": 0.99,
+    "polyak": 0.005,
+    "actor_learning_rate": 5e-4,
+    "critic_learning_rate": 5e-4,
+    "random_timesteps": 80,
+    "learning_starts": 80,
+    "state_preprocessor": RunningStandardScaler,
+    "state_preprocessor_kwargs": {"size": env.observation_space, "device": device},
+    "experiment": {
+        "directory": f"progress/{name}",            # experiment's parent directory
+        "experiment_name": name,      # experiment name
+        "write_interval": 250,      # TensorBoard writing interval (timesteps)
+        "checkpoint_interval": 1000,        # interval for checkpoints (timesteps)
+        "store_separately": False,          # whether to store checkpoints separately
+        "wandb": True,             # whether to use Weights & Biases
+        "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
+    }
+}, ddpg_cfg)
+
+run = wandb.init(
+    project=name,
+    config=ddpg_cfg,
+    sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+    # monitor_gym=True,  # auto-upload the videos of agents playing the game
+    # save_code=True,  # optional
+)
 
 agent = DDPG(models=models,
              memory=memory,
-             cfg=cfg,
+             cfg=ddpg_cfg,
              observation_space=env.observation_space,
              action_space=env.action_space,
              device=device)
 
 
 # configure and instantiate the RL trainer
-cfg = {"timesteps": 50000, "headless": False}
+trainer_cfg = {"timesteps": 50000, "headless": False}
 
 # This trainer grabs the data and trains the model
-trainer = ParallelTrainer(env=env, agents=agents, cfg=cfg)
+trainer = ParallelTrainer(env=env, agents=agents, cfg=trainer_cfg)
 
 threading.Thread(target=trainer.train).start()
 # trainer.eval()
 
 # The TraimerMT can be None, cause it is only used to stop the Sim
 env.run(trainer=None)
-
-
-
-# Logging: https://skrl.readthedocs.io/en/latest/intro/data.html
