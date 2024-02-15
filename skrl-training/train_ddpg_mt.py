@@ -18,6 +18,18 @@ from skrl.envs.wrappers.torch import OmniverseIsaacGymWrapper
 from omni.isaac.gym.vec_env import TaskStopException, VecEnvMT
 
 
+def merge(source, destination):
+    for key, value in source.items():
+        if isinstance(value, dict):
+            # get node or create one
+            node = destination.setdefault(key, {})
+            merge(value, node)
+        else:
+            destination[key] = value
+
+    return destination
+
+
 name = 'DDPG_Pack'
 
 # seed for reproducibility
@@ -137,22 +149,9 @@ models["critic"] = Critic(env.observation_space, env.action_space, device)
 models["target_critic"] = Critic(env.observation_space, env.action_space, device)
 
 
-
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
 ddpg_cfg = DDPG_DEFAULT_CONFIG.copy()
-
-def merge(source, destination):
-    for key, value in source.items():
-        if isinstance(value, dict):
-            # get node or create one
-            node = destination.setdefault(key, {})
-            merge(value, node)
-        else:
-            destination[key] = value
-
-    return destination
-
 ddpg_cfg = merge({
     "exploration": {
         "noise": OrnsteinUhlenbeckNoise(theta=0.15, sigma=0.1, base_scale=0.5, device=device)

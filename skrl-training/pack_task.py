@@ -1,7 +1,7 @@
 import os
 import math
 import random
-import numpy as np
+import torch
 from pxr import Gf, UsdLux, Sdf
 from gymnasium import spaces
 
@@ -32,18 +32,8 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
-
-# MESH_APPROXIMATIONS = {
-#         "none": PhysxSchema.PhysxTriangleMeshCollisionAPI,
-#         "convexHull": PhysxSchema.PhysxConvexHullCollisionAPI,
-#         "convexDecomposition": PhysxSchema.PhysxConvexDecompositionCollisionAPI,
-#         "meshSimplification": PhysxSchema.PhysxTriangleMeshSimplificationCollisionAPI,
-#         "convexMeshSimplification": PhysxSchema.PhysxTriangleMeshSimplificationCollisionAPI,
-#         "boundingCube": None,
-#         "boundingSphere": None,
-#         "sphereFill": PhysxSchema.PhysxSphereFillCollisionAPI,
-#         "sdf": PhysxSchema.PhysxSDFMeshCollisionAPI,
-# }
+from omni.isaac.gym.tasks.rl_task import RLTaskInterface
+from omni.isaac.cloner import GridCloner
 
 LEARNING_STARTS = 10
 
@@ -75,8 +65,8 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.10918, 0.0803], [0.072, 0.99, 0, 0])]
 NUMBER_PARTS = len(IDEAL_PACKAGING)
 
-# Seed Env or DDPG will always be the same !!
-class PackTask(BaseTask):
+
+class PackTask(RLTaskInterface):
     kinematics_solver = None
     
     """
@@ -85,7 +75,7 @@ class PackTask(BaseTask):
         offset (Optional[np.ndarray], optional): offset applied to all assets of the task.
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
-    def __init__(self, name, max_steps, offset=None, sim_s_step_freq: int = 60) -> None:
+    def __init__(self, name, sim_config, env, offset=None) -> None:
         self._env_path = f"/{name}/{ENV_PATH}"
         self._light_path = {"/{name}/{LIGHT_PATH}"}
         self._robot_path = f"/{name}/{ROBOT_PATH}"
@@ -95,11 +85,6 @@ class PackTask(BaseTask):
 
         # self._num_observations = 1
         # self._num_actions = 1
-        self._device = "cpu"
-        self.num_envs = 1
-        # Robot turning ange of max speed is 191deg/s
-        self.__joint_rot_max = (191.0 * math.pi / 180) / sim_s_step_freq
-        self.max_steps = max_steps
 
         self.observation_space = spaces.Dict({
             'gripper_closed': spaces.Discrete(2),
@@ -111,9 +96,41 @@ class PackTask(BaseTask):
         # End Effector Pose
         self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float) # Delta Gripper Pose & gripper open / close
 
-        # trigger __init__ of parent class
-        BaseTask.__init__(self, name=name, offset=offset)
+        self.update_config(sim_config)
 
+        # trigger __init__ of parent class
+        super.__init__(self, name=name, env=env, offset=offset)
+        
+
+    def update_config(self, sim_config):
+        self._cfg = sim_config.config
+        self._task_cfg = sim_config.task_config
+        self._num_observations = 60
+        self._num_actions = 8
+        self._ant_positions = torch.tensor([0, 0, 0.5])
+
+        self._device = self._cfg["sim_device"]
+        
+        self._num_envs = self._task_cfg["env"]["numEnvs"]
+        self._env_spacing = self._task_cfg["env"]["envSpacing"]
+        self._max_episode_length = self._task_cfg["env"]["episodeLength"]
+        self.dof_vel_scale = self._task_cfg["env"]["dofVelocityScale"]
+        self.angular_velocity_scale = self._task_cfg["env"]["angularVelocityScale"]
+        self.contact_force_scale = self._task_cfg["env"]["contactForceScale"]
+        self.power_scale = self._task_cfg["env"]["powerScale"]
+        self.heading_weight = self._task_cfg["env"]["headingWeight"]
+        self.up_weight = self._task_cfg["env"]["upWeight"]
+        self.actions_cost_scale = self._task_cfg["env"]["actionsCost"]
+        self.energy_cost_scale = self._task_cfg["env"]["energyCost"]
+        self.joints_at_limit_cost_scale = self._task_cfg["env"]["jointsAtLimitCost"]
+        self.death_cost = self._task_cfg["env"]["deathCost"]
+        self.termination_height = self._task_cfg["env"]["terminationHeight"]
+        self.alive_reward_scale = self._task_cfg["env"]["alive_reward_scale"]
+
+        # Robot turning ange of max speed is 191deg/s
+        self.__joint_rot_max = (191.0 * math.pi / 180) / 60 # The sim runs on 60hz by default
+        
+        RLTaskInterface.update_config(self)
 
 
     def set_up_scene(self, scene) -> None:
