@@ -7,6 +7,8 @@ dreamerv3
 logdir*
 wandb
 temp
+runs
+progress
 
 # C extensions
 *.so

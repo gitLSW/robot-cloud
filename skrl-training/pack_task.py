@@ -32,7 +32,7 @@ from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollide
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
-from omni.isaac.gym.tasks.rl_task import RLTaskInterface
+from omniisaacgymenvs.rl_task import RLTask
 from omni.isaac.cloner import GridCloner
 
 LEARNING_STARTS = 10
@@ -66,7 +66,69 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
 NUMBER_PARTS = len(IDEAL_PACKAGING)
 
 
-class PackTask(RLTaskInterface):
+
+TASK_CFG = {
+    "test": False,
+    "device_id": 0,
+    "headless": False,
+    "multi_gpu": False,
+    "sim_device": "gpu",
+    "enable_livestream": False,
+    "task": {
+        "name": name,
+        "physics_engine": "physx",
+        "env": {
+            "numEnvs": 512,
+                "envSpacing": 1.5,
+                "enableDebugVis": False,
+                "clipObservations": 1000.0,
+                "clipActions": 1.0,
+                "controlFrequencyInv": 4
+        },
+        "sim": {
+            "dt": 0.0083,  # 1 / 120
+            "use_gpu_pipeline": True,
+            "gravity": [0.0, 0.0, -9.81],
+            "add_ground_plane": True,
+            "use_flatcache": True,
+            "enable_scene_query_support": False,
+            "enable_cameras": False,
+            "default_physics_material": {
+                "static_friction": 1.0,
+                "dynamic_friction": 1.0,
+                "restitution": 0.0
+            },
+            "physx": {
+                "worker_thread_count": 4,
+                "solver_type": 1,
+                "use_gpu": True,
+                "solver_position_iteration_count": 4,
+                "solver_velocity_iteration_count": 1,
+                "contact_offset": 0.005,
+                "rest_offset": 0.0,
+                "bounce_threshold_velocity": 0.2,
+                "friction_offset_threshold": 0.04,
+                "friction_correlation_distance": 0.025,
+                "enable_sleeping": True,
+                "enable_stabilization": True,
+                "max_depenetration_velocity": 1000.0,
+                "gpu_max_rigid_contact_count": 524288,
+                "gpu_max_rigid_patch_count": 33554432,
+                "gpu_found_lost_pairs_capacity": 524288,
+                "gpu_found_lost_aggregate_pairs_capacity": 262144,
+                "gpu_total_aggregate_pairs_capacity": 1048576,
+                "gpu_max_soft_body_contacts": 1048576,
+                "gpu_max_particle_contacts": 1048576,
+                "gpu_heap_capacity": 33554432,
+                "gpu_temp_buffer_capacity": 16777216,
+                "gpu_max_num_partitions": 8
+            }
+        }
+    }
+}
+
+
+class PackTask(RLTask):
     kinematics_solver = None
     
     """
@@ -103,8 +165,10 @@ class PackTask(RLTaskInterface):
         
 
     def update_config(self, sim_config):
+        self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
+
         self._num_observations = 60
         self._num_actions = 8
         self._ant_positions = torch.tensor([0, 0, 0.5])
