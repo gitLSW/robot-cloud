@@ -28,7 +28,7 @@ TASK_CFG = {"test": False,
             "seed": 42,
             "task": {"name": "ReachingFranka",
                      "physics_engine": "physx",
-                     "env": {"numEnvs": 100,
+                     "env": {"numEnvs": 50_000,
                              "envSpacing": 1.5,
                              "episodeLength": 100,
                              "enableDebugVis": False,
@@ -37,8 +37,8 @@ TASK_CFG = {"test": False,
                              "controlFrequencyInv": 4,
                              "actionScale": 2.5,
                              "dofVelocityScale": 0.1,
-                             "controlSpace": "cartesian"},
-                     "sim": {"dt": 0.0083,  # 1 / 120
+                             "controlSpace": "joint"},
+                     "sim": {"dt": 1 / 60,
                              "use_gpu_pipeline": True,
                              "gravity": [0.0, 0.0, -9.81],
                              "add_ground_plane": True,
@@ -109,7 +109,7 @@ class ReachingFrankaTask(RLTask):
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
 
-        self.dt = 1 / 120.0
+        self.dt = self._task_cfg["sim"]["dt"]
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._env_spacing = self._task_cfg["env"]["envSpacing"]

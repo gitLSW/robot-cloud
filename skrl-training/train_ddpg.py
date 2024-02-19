@@ -7,34 +7,20 @@ import torch.nn as nn
 import wandb
 
 # import the skrl components to build the RL system
+from skrl.utils import set_seed
 from skrl.agents.torch.ddpg import DDPG, DDPG_DEFAULT_CONFIG
 from skrl.memories.torch import RandomMemory
 from skrl.models.torch import DeterministicMixin, Model
 from skrl.resources.noises.torch import OrnsteinUhlenbeckNoise
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import ParallelTrainer
-from skrl.utils import set_seed
 from skrl.envs.wrappers.torch import OmniverseIsaacGymWrapper
-from omni.isaac.gym.vec_env import TaskStopException, VecEnvMT
-
-
-def merge(source, destination):
-    for key, value in source.items():
-        if isinstance(value, dict):
-            # get node or create one
-            node = destination.setdefault(key, {})
-            merge(value, node)
-        else:
-            destination[key] = value
-
-    return destination
-
+from omniisaacgymenvs.isaac_gym_env_utils import get_env_instance
 
 name = 'DDPG_Pack'
 
 # seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
-
+seed = set_seed()
 
 # define models (deterministic models) using mixins
 class DeterministicActor(DeterministicMixin, Model):
@@ -67,39 +53,41 @@ class Critic(DeterministicMixin, Model):
         return self.net(torch.cat([inputs["states"], inputs["taken_actions"]], dim=1)), {}
 
 
-# load and wrap the Isaac Gym environment
-# tHE vEC_ENV_mt FILLS THE QUUES with data
+# Load the Isaac Gym environment
+headless = False  # set headless to False for rendering
+multi_threaded = headless
+env = get_env_instance(headless=headless, multi_threaded=multi_threaded) # Multithreaded doesn't work with UI open
 
-# get environment instance
-from skrl.utils.omniverse_isaacgym_utils import get_env_instance
-env = get_env_instance(headless=False, multi_threaded=True)
+from omniisaacgymenvs.sim_config import SimConfig, merge
+from pack_task import PackTask, TASK_CFG
 
-# import and setup custom task
-from reaching_franka_omniverse_isaacgym_env import ReachingFrankaTask, TASK_CFG
-from omniisaacgymenvs.sim_config import SimConfig
+TASK_CFG['name'] = name
+TASK_CFG["seed"] = seed
+TASK_CFG["headless"] = headless
+if not headless:
+    TASK_CFG["task"]["env"]["numEnvs"] = 100
+
 sim_config = SimConfig(TASK_CFG)
-task = ReachingFrankaTask(name=name, sim_config=sim_config, env=env)
-env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True)
+task = PackTask(name=name, sim_config=sim_config, env=env)
+env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True, rendering_dt=TASK_CFG['task']['sim']['dt'])
+# task.reset()
 
-env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=30)
+if multi_threaded:
+    env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=5)
 
 # wrap the environment
 env = OmniverseIsaacGymWrapper(env)
-
 device = env.device
-
-# instantiate a memory as experience replay
-memory = RandomMemory(memory_size=15625, num_envs=env.num_envs, device=device)
 
 # instantiate the agent's models (function approximators).
 # DDPG requires 4 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#models
-models = {}
-models["policy"] = DeterministicActor(env.observation_space, env.action_space, device)
-models["target_policy"] = DeterministicActor(env.observation_space, env.action_space, device)
-models["critic"] = Critic(env.observation_space, env.action_space, device)
-models["target_critic"] = Critic(env.observation_space, env.action_space, device)
-
+models = {
+    'policy': DeterministicActor(env.observation_space, env.action_space, device),
+    'target_policy': DeterministicActor(env.observation_space, env.action_space, device),
+    'critic': Critic(env.observation_space, env.action_space, device),
+    'target_critic': Critic(env.observation_space, env.action_space, device),
+}
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
@@ -137,6 +125,9 @@ run = wandb.init(
     # save_code=True,  # optional
 )
 
+
+# instantiate a memory as experience replay
+memory = RandomMemory(memory_size=15625, num_envs=TASK_CFG["task"]["env"]["numEnvs"], device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,
@@ -144,15 +135,15 @@ agent = DDPG(models=models,
              action_space=env.action_space,
              device=device)
 
+# agent.load("./runs/24-02-18_18-11-49-077733_PPO/checkpoints/best_agent.pt")
 
-# configure and instantiate the RL trainer
-trainer_cfg = {"timesteps": 50000, "headless": False}
+# Configure and instantiate the RL trainer
+cfg_trainer = {"timesteps": 50_000_000 // TASK_CFG["task"]["env"]["numEnvs"], "headless": headless}
+trainer = ParallelTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# This trainer grabs the data and trains the model
-trainer = ParallelTrainer(env=env, agents=agent, cfg=trainer_cfg)
-
-threading.Thread(target=trainer.train).start()
-# trainer.eval()
-
-# The TraimerMT can be None, cause it is only used to stop the Sim
-env.run(trainer=None)
+if multi_threaded:
+    # start training in a separate thread
+    threading.Thread(target=trainer.train).start()
+    env.run(trainer=None) # The TraimerMT can be None, cause it is only used to stop the Sim
+else:
+    trainer.train()

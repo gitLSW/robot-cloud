@@ -5,18 +5,18 @@ import torch
 import torch.nn as nn
 
 # Import the skrl components to build the RL system
+from skrl.utils import set_seed
 from skrl.models.torch import Model, GaussianMixin, DeterministicMixin
 from skrl.memories.torch import RandomMemory
 from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
 from skrl.resources.schedulers.torch import KLAdaptiveRL
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import ParallelTrainer, SequentialTrainer
-from omniisaacgymenvs.isaac_gym_env_utils import get_env_instance, OmniverseIsaacGymWrapper
-from skrl.utils import set_seed
+from skrl.envs.wrappers.torch.omniverse_isaacgym_envs import OmniverseIsaacGymWrapper
+from omniisaacgymenvs.isaac_gym_env_utils import get_env_instance
 
 # Seed for reproducibility
 seed = set_seed()  # e.g. `set_seed(42)` for fixed seed
-
 
 # Define the models (stochastic and deterministic models) for the agent using helper mixin.
 # - Policy: takes as input the environment's observation/state and returns an action
@@ -56,34 +56,33 @@ class Value(DeterministicMixin, Model):
         return self.net(inputs["states"]), {}
 
 
-# instance VecEnvBase and setup task
-headless = True  # set headless to False for rendering
-env = get_env_instance(headless=headless, multi_threaded=True)
+headless = False  # set headless to False for rendering
+multi_threaded = headless
+env = get_env_instance(headless=headless, multi_threaded=multi_threaded) # Multithreaded doesn't work with UI open
 
-from omniisaacgymenvs.sim_config import SimConfig
+from omniisaacgymenvs.sim_config import SimConfig, merge
 from reaching_franka_omniverse_isaacgym_env import ReachingFrankaTask, TASK_CFG
 
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
-TASK_CFG["task"]["env"]["numEnvs"] = 1024
+TASK_CFG["task"]["env"]["numEnvs"] = 50_000 if headless else 25
 TASK_CFG["task"]["env"]["controlSpace"] = "joint"  # "joint" or "cartesian"
 
 sim_config = SimConfig(TASK_CFG)
 task = ReachingFrankaTask(name="ReachingFranka", sim_config=sim_config, env=env)
-env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True)
+env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True, rendering_dt=TASK_CFG['task']['sim']['dt'])
 # task.reset()
 
-env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=5)
+if multi_threaded:
+    env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=5)
 
 # wrap the environment
 env = OmniverseIsaacGymWrapper(env)
 
 device = env.device
 
-
 # Instantiate a RandomMemory as rollout buffer (any memory can be used for this)
 memory = RandomMemory(memory_size=16, num_envs=env.num_envs, device=device)
-
 
 # Instantiate the agent's models (function approximators).
 # PPO requires 2 models, visit its documentation for more details
@@ -129,24 +128,15 @@ agent = PPO(models=models_ppo,
             action_space=env.action_space,
             device=device)
 
+# agent.load("./runs/24-02-18_18-11-49-077733_PPO/checkpoints/best_agent.pt")
 
 # Configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 50000, "headless": headless}
+cfg_trainer = {"timesteps": 50_000_000 // TASK_CFG["task"]["env"]["numEnvs"], "headless": headless}
 trainer = ParallelTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# start training in a separate thread
-threading.Thread(target=trainer.train).start()
-# trainer.eval()
-
-# The TraimerMT can be None, cause it is only used to stop the Sim
-
-env.run(trainer=None)
-
-# await self._env.run(trainer)
-# await omni.kit.app.get_app().next_update_async()
-
-# loop = asyncio.new_event_loop()
-# asyncio.set_event_loop(loop)
-# # loop.create_task(trainer.train())
-# loop.create_task(env.run(trainer=None))
-# loop.run_forever()
+if multi_threaded:
+    # start training in a separate thread
+    threading.Thread(target=trainer.train).start()
+    env.run(trainer=None) # The TraimerMT can be None, cause it is only used to stop the Sim
+else:
+    trainer.train()
