@@ -143,7 +143,7 @@ def get_env_instance(headless: bool = True,
             actions = torch.clamp(actions, -self._task.clip_actions, self._task.clip_actions).clone()
 
             self.send_actions(actions) # Send actions
-            data = self.get_data() # wait until data queue was filled
+            data = self.get_data() # this waits until data queue has content and then calls _parse_data
 
             return {"obs": self._observations}, self._rewards, self._dones, self._info
 

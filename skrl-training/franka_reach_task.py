@@ -201,7 +201,10 @@ class ReachingFrankaTask(RLTask):
             self.hand_pos, self.hand_rot = self._hands.get_world_poses(clone=False)
             self.hand_pos -= self._env_pos
 
-        return {self._robots.name: {"obs_buf": self.obs_buf}}
+        # The return is itrrelevant for Multi Threading:
+        # The VecEnvMT Loop calls RLTask.post_physics_step to get all the data from one step.
+        # RLTask.post_physics_step is simply returning self.obs_buf, self.rew_buf,...
+        return { self._robots.name: {"obs_buf": self.obs_buf } }
 
     def pre_physics_step(self, actions) -> None:
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
@@ -213,7 +216,6 @@ class ReachingFrankaTask(RLTask):
 
         if self._control_space == "joint":
             targets = self.robot_dof_targets[:, :7] + self.robot_dof_speed_scales[:7] * self.dt * self.actions * self._action_scale
-
         elif self._control_space == "cartesian":
             goal_position = self.hand_pos + actions / 100.0
             delta_dof_pos = omniverse_isaacgym_utils.ik(jacobian_end_effector=self.jacobians[:, 8 - 1, :, :7],  # franka hand index: 8

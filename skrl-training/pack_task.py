@@ -33,7 +33,7 @@ from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
 from omniisaacgymenvs.rl_task import RLTask
-from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.robots.robot_view import RobotView
 from omni.isaac.cloner import GridCloner
 
 LEARNING_STARTS = 10
@@ -50,7 +50,7 @@ DEST_BOX_PATH = "World/DestinationBox"
 DEST_BOX_POS = torch.tensor([0, -0.65, FALLEN_PART_THRESHOLD])
 
 PART_PATH = 'World/Part'
-PART_SOURCE = DEST_BOX_POS + torch.tensor([0, 0, 0.4])
+PART_OFFSET = torch.tensor([0, 0, 0.4])
 # NUM_PARTS = 5
 PART_PILLAR_PATH = "World/Pillar"
 
@@ -64,7 +64,7 @@ IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, 0.10918, 0.0803], [0.072, 0.99, 0, 0])]
 NUMBER_PARTS = len(IDEAL_PACKAGING)
 
-
+local_assets = os.getcwd() + '/assets'
 
 TASK_CFG = {
     "test": False,
@@ -127,7 +127,7 @@ TASK_CFG = {
 
 
 class PackTask(RLTask):
-    kinematics_solver = None
+    # kinematics_solver = None
     
     """
     This class sets up a scene and calls a RL Policy, then evaluates the behaivior with rewards
@@ -152,7 +152,10 @@ class PackTask(RLTask):
 
         # trigger __init__ of parent class
         super().__init__(name, env, offset)
-        
+
+    def cleanup(self):
+        super().cleanup()
+        self._env_steps = torch.zeros((self._num_envs, 1), device=self._device)
 
     def update_config(self, sim_config):
         self._sim_config = sim_config
@@ -176,8 +179,6 @@ class PackTask(RLTask):
 
         super().set_up_scene(scene)
 
-        local_assets = os.getcwd() + '/assets'
-
         # This is the URL from which the Assets are downloaded
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
         assets_root_path = get_assets_root_path()
@@ -197,18 +198,13 @@ class PackTask(RLTask):
         #     }
         # )
 
-        env0_part_path = self.default_zero_env_path + '/part'
-        part_usd_path = local_assets + '/draexlmaier_part.usd'
-        add_reference_to_stage(part_usd_path, env0_part_path)
-        part = RigidPrim(prim_path=env0_part_path,
-                         position=PART_SOURCE,
-                         orientation=[0, 1, 0, 0],
-                         mass=0.5)
-        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
-        self._parts = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/part',
-                                    name='part_view',
-                                    reset_xform_properties=False)
-        scene.add(self._parts)
+        # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        # table_path = local_assets + '/table_low.usd'
+        # self.table = XFormPrim(prim_path=self._start_table_path, position=START_TABLE_POS, scale=[0.5, START_TABLE_HEIGHT, 0.4])
+        # add_reference_to_stage(table_path, self._start_table_path)
+        # setRigidBody(self.table.prim, approximationShape='convexHull', kinematic=True) # Kinematic True means immovable
+        # # self.table = RigidPrim(rim_path=self._start_table_path, name='TABLE')
+        # self._task_objects[self._start_table_path] = self.table
 
         env0_box_path = self.default_zero_env_path + '/box'
         box_usd_path = assets_root_path + '/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd'
@@ -217,20 +213,35 @@ class PackTask(RLTask):
         box = RigidPrim(prim_path=env0_box_path,
                         position=DEST_BOX_POS,
                         scale=[1, 1, 0.4])
-        
         setRigidBody(box.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
-        self._boxes = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/box',
+        self._boxes_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/box',
                                     name='box_view',
                                     reset_xform_properties=False)
-        scene.add(self._boxes)
+        scene.add(self._boxes_view)
+
+
+        env0_part_path = self.default_zero_env_path + '/part_0'
+        part_usd_path = local_assets + '/draexlmaier_part.usd'
+        add_reference_to_stage(part_usd_path, env0_part_path)
+        part = RigidPrim(prim_path=env0_part_path,
+                         position=DEST_BOX_POS + PART_OFFSET,
+                         orientation=[0, 1, 0, 0],
+                         mass=0.5)
+        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
+        parts_view = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/part_0',
+                                   name='part_view',
+                                   reset_xform_properties=False)
+        scene.add(parts_view)
+        self._curr_parts = [RigidPrim(prim_path=path) for path in parts_view.prim_paths]
         
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
         env0_robot_path = self.default_zero_env_path + '/robot'
         _ = UR10(prim_path=env0_robot_path, name='UR10', position=ROBOT_POS, attach_gripper=True)
-        self._robots = ArticulationView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot', name='ur10_view', reset_xform_properties=False)
-        scene.add(self._robots)
+        robots_view = RobotView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot', name='ur10_view')
+        scene.add(robots_view)
+        self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in robots_view.prim_paths]
         
         # self.part_pillar = objs.FixedCuboid(
         #     name=self._pillar_path,
@@ -242,113 +253,137 @@ class PackTask(RLTask):
 
         # set_camera_view(eye=ROBOT_POS + torch.tensor([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
     
+    # def next_part_reset(self, env_index):
+    #     box_pos = self._boxes.get_world_poses()[env_index][0]
+    #     self._placed_parts[env_index] = self._curr_parts[env_index]
+    #     next_part_num = int(self._parts[env_index].prim_path[len(s)-1]) + 1
+
+    #     env_part_path = f'self.default_zero_env_path/part_{next_part_num}'
+    #     part_usd_path = local_assets + '/draexlmaier_part.usd'
+    #     add_reference_to_stage(part_usd_path, env_part_path)
+    #     part = RigidPrim(prim_path=env_part_path,
+    #                      position=box_pos + PART_OFFSET,
+    #                      orientation=[0, 1, 0, 0],
+    #                      mass=0.5)
+    #     scene.add(self.part)
 
 
-#    def reset(self):
-#         # super().cleanup()
-
-#         # if not self.robot.handles_initialized():
-#         self.robot.initialize()
-#         default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
-#         self.robot.set_joint_positions(positions=default_pose)
-
-#         if not self.kinematics_solver:
-#             self.kinematics_solver = KinematicsSolver(robot_articulation=self.robot, attach_gripper=True)
-
-#         self.step = 0
-
-#         gripper_pos = torch.tensor(self.robot.gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.25])
-#         self.part_pillar.set_world_pose([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
-#         self.part_pillar.set_local_scale([1, 1, gripper_pos[2]])
-#         self.part.set_world_pose(gripper_pos, [0, 1, 0, 0])
-
-#         # gripper_pos, gripper_rot = self.robot.gripper.get_world_pose()
-#         # gripper_pos -= self.robot.get_world_pose()[0]
-#         # self.robot.gripper.open()
-#         #  np.concatenate((gripper_pos, gripper_rot, [-1]), axis=0)
+    def reset(self):
+        self._placed_parts = [[] for i in range(self._num_envs)]
+        for robot in self._robots:
+            robot.initialize()
+        super().reset()
 
 
-#         box_state, current_ideal_pose = self.compute_box_state()
+    def reset_env(self, env_index, next_part=False) -> None:
+        self._env_steps[env_index] = 0
 
-#         part_pos, part_rot = self.part.get_world_pose()
-#         part_pos -= self.box.get_world_pose()[0]
-#         part_rot_euler = R.from_quat(part_rot).as_euler('xyz',degrees=False)
-#         ideal_rot_euler = R.from_quat(current_ideal_pose[1]).as_euler('xyz',degrees=False)
-#         part_pos_diff = current_ideal_pose[0] - part_pos
-#         part_rot_diff = ideal_rot_euler - part_rot_euler
+        default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
 
-#         return {
-#             'gripper_closed': False,
-#             'box_state': box_state,
-#             'part_state': np.concatenate((part_pos_diff, part_rot_diff), axis=0)
-#         }
+        robot = self._robots[env_index]
+        robot.set_joint_positions(positions=default_pose)
+        
+        # super().cleanup()
 
+        # if not self.kinematics_solver:
+        #     self.kinematics_solver = KinematicsSolver(robot_articulation=robot, attach_gripper=True)
+        
+        gripper_pos = torch.tensor(robot.gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.25])
+        self.part_pillars.set_world_poses([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
+        self.part_pillars.set_local_scales([1, 1, gripper_pos[2]],)
 
-#     placed_parts = []
-#     def get_observations(self):
-#         # gripper = self.robot.gripper
-#         # gripper_pos, gripper_rot = gripper.get_world_pose()
-#         # gripper_pos -= self.robot.get_world_pose()[0]
+        if next_part:
+            env0_part_path = self.default_zero_env_path + '/part_0'
+            part_usd_path = local_assets + '/draexlmaier_part.usd'
+            add_reference_to_stage(part_usd_path, env0_part_path)
+            part = RigidPrim(prim_path=env0_part_path,
+                            position=gripper_pos,
+                            orientation=[0, 1, 0, 0],
+                            mass=0.5)
+            self.world.scene.add(part)
+            self._placed_parts[env_index].append(self._curr_parts[env_index])
+            self._curr_parts[env_index] = part
+        else:
+            self._curr_parts[env_index].set_world_pose(gripper_pos, [0, 1, 0, 0])
 
-#         # gripper_pose_kin = self.kinematics_solver.compute_end_effector_pose()
-#         # gripper_closed = 2 * float(gripper.is_closed()) - 1
-#         # # 'gripper_state': np.concatenate((gripper_pos, gripper_rot, [gripper_closed]), axis=0),
-
-#         # # TODO: Was sollen wir verwenden ??!!
-#         # print('COMPARE:')
-#         # print(gripper_pose_kin)
-#         # print((gripper_pos, gripper_rot))
-
-#         # forces = self.robot.get_measured_joint_forces()
-
-#         box_state, current_ideal_pose = self.compute_box_state()
-
-#         part_pos, part_rot = self.part.get_world_pose()
-#         part_pos -= self.box.get_world_pose()[0]
-#         part_rot_euler = R.from_quat(part_rot).as_euler('xyz',degrees=False)
-#         ideal_rot_euler = R.from_quat(current_ideal_pose[1]).as_euler('xyz',degrees=False)
-#         part_pos_diff = current_ideal_pose[0] - part_pos
-#         part_rot_diff = ideal_rot_euler - part_rot_euler
-
-#         return {
-#             'gripper_closed': self.robot.gripper.is_closed(),
-#             'box_state': box_state,
-#             # 'forces': forces,
-#             'part_state':  np.concatenate((part_pos_diff, part_rot_diff), axis=0)
-#         }
+        # return {
+        #     'gripper_closed': False,
+        #     'box_state': box_state,
+        #     'part_state': np.concatenate((part_pos_diff, part_rot_diff), axis=0)
+        # }
 
 
-#     # Returns: A 2D Array where each entry is the poses of the parts in the box
-#     def compute_box_state(self):
-#         box_state = []
-#         ideal_selection = IDEAL_PACKAGING.copy()
-#         parts = self.placed_parts + [self.part]
-#         current_ideal_pose = None
+    # _placed_parts # [[part]] where each entry in the outer array is the placed parts for env at index
+    # Returns: A 2D Array where each entry is the poses of the parts in the box
+    def get_observations(self):
+        def _shortest_rot_dist(quat_1, quat_2):
+            part_quat = Quaternion(quat_1)
+            ideal_quat = Quaternion(quat_2)
+            return Quaternion.absolute_distance(part_quat, ideal_quat)
+        
+        box_poses = self._boxes_view.get_world_poses()
+        for env_index in range(self.num_envs):
+            self.obs_buf[env_index, 0] = self._robots[env_index].gripper.is_closed()
 
-#         for i in range(NUMBER_PARTS):
-#             if len(parts) <= i:
-#                 box_state.append([3, math.pi])
-#                 continue
-#             part = parts[i]
-#             part_pos, part_rot= part.get_world_pose()
-#             part_pos -= self.box.get_world_pose()[0]
+            ideal_selection = IDEAL_PACKAGING.copy()
+            box_pos = box_poses[env_index][0]
+            eval_parts = self._placed_parts[env_index] + [self._curr_parts[env_index]]
 
-#             ideal_part = None
-#             min_dist = 10000000
-#             # Find closest ideal part
-#             for sel_part in ideal_selection:
-#                 dist = np.linalg.norm(sel_part[0] - part_pos)
-#                 if dist < min_dist:
-#                     ideal_part = sel_part
-#                     min_dist = dist
-#                     if i == len(parts) - 1:
-#                         current_ideal_pose = ideal_part
+            # box_state = []
+            # ideal_pose_for_curr_part = None
+            for part_index in range(NUMBER_PARTS):
+                if len(eval_parts) < part_index:
+                    # box_state.append([3, math.pi])
+                    self.obs_buf[env_index, 7:(9 + 2 * part_index)] = [3, math.pi]
+                    continue
 
-#             ideal_selection.remove(ideal_part)
-#             rot_dist = _shortest_rot_dist(part_rot, ideal_part[1])
-#             box_state.append([min_dist, rot_dist])
+                part_pos, part_rot = eval_parts[part_index].get_world_pose()
+                part_pos -= box_pos
 
-#         return box_state, current_ideal_pose
+                ideal_part = None
+                min_dist = 10000000
+                # Find closest ideal part
+                for pot_part in ideal_selection:
+                    dist = torch.linalg.norm(torch.tensor(pot_part[0], device=self._device) - part_pos)
+                    if dist < min_dist:
+                        ideal_part = pot_part
+                        min_dist = dist
+
+                print(part_rot, ideal_part[1])
+                rot_dist = _shortest_rot_dist(part_rot, ideal_part[1])
+                part_pose_distances = [min_dist, rot_dist]
+                # box_state.append(part_diff)
+                self.obs_buf[env_index, 7:(9 + 2 * part_index)] = part_pose_distances
+
+                if part_index == len(eval_parts) - 1:
+                    # ideal_pose_for_curr_part = ideal_part
+                    self.obs_buf[env_index, 1:7] = [ideal_part[0], ideal_part[1]]
+        
+        # gripper_pose_kin = self.kinematics_solver.compute_end_effector_pose()
+
+        # # TODO: Was sollen wir verwenden ??!!
+        # print('COMPARE:')
+        # print(gripper_pose_kin)
+        # print((gripper_pos, gripper_rot))
+
+        # forces = self.robot.get_measured_joint_forces()
+
+        # The return is itrrelevant for Multi Threading:
+        # The VecEnvMT Loop calls RLTask.post_physics_step to get all the data from one step.
+        # RLTask.post_physics_step is simply returning self.obs_buf, self.rew_buf,...
+        # post_physics_step calls
+        # - get_observations()
+        # - get_states()
+        # - calculate_metrics()
+        # - is_done()
+        # - get_extras()
+        # return {
+        #     'gripper_closed': self.robot.gripper.is_closed(),
+        #     'box_state': box_state,
+        #     # 'forces': forces,
+        #     'part_state':  np.concatenate((part_pos_diff, part_rot_diff), axis=0)
+        # }
+
 
 
 #     def pre_physics_step(self, actions) -> None:
@@ -382,97 +417,96 @@ class PackTask(RLTask):
 
 
     
-#     # Calculate Rewards
-#     step = 0
-#     def calculate_metrics(self) -> None:
-#         self.step += 1
-#         # Terminate: Umgefallene Teile, Gefallene Teile
-#         # Success: 
-#         part_pos, part_rot = self.part.get_world_pose()
+    # Calculate Rewards
+    step = 0
+    def calculate_metrics(self) -> None:
+        # Part was placed
+        # box_poses = self._boxes_view.get_world_poses()
+        # self.placed_parts[env_index].append(self._parts_view[(env_index][0]- box_poses[env_index][0], self._parts_view[(env_index][1]))
 
-#         any_flipped = False
-#         for part in self.placed_parts:
-#             part_rot = part.get_world_pose()[1]
-#             if _is_flipped(part_rot):
-#                 any_flipped = True
-#                 break
+        self.step += 1
+        # Terminate: Umgefallene Teile, Gefallene Teile
+        # Success: 
+        part_pos, part_rot = self.part.get_world_pose()
 
-#         if part_pos[2] < FALLEN_PART_THRESHOLD or self.max_steps < self.step or any_flipped:
-#             return -MAX_STEP_PUNISHMENT, True
+        any_flipped = False
+        for part in self.placed_parts:
+            part_rot = part.get_world_pose()[1]
+            if _is_flipped(part_rot):
+                any_flipped = True
+                break
 
-#         box_state, _ = self.compute_box_state()
-#         box_deviation = np.sum(np.square(box_state))
+        if part_pos[2] < FALLEN_PART_THRESHOLD or self.max_steps < self.step or any_flipped:
+            return -MAX_STEP_PUNISHMENT, True
 
-#         # placed_parts.append(self.part)
+        box_state, _ = self.compute_box_state()
+        box_deviation = torch.sum(torch.square(box_state))
 
-#         return -box_deviation, False
-#         # gripper_pos = self.robot.gripper.get_world_pose()[0]
+        # placed_parts.append(self.part)
 
-#         # self.step += 1
-#         # if self.step < LEARNING_STARTS:
-#         #     return 0, False
+        return -box_deviation, False
+        # gripper_pos = self.robot.gripper.get_world_pose()[0]
 
-#         # done = False
-#         # reward= 0
+        # self.step += 1
+        # if self.step < LEARNING_STARTS:
+        #     return 0, False
 
-#         # part_pos, part_rot = self.part.get_world_pose()
-#         # dest_box_pos = self.part.get_world_pose()[0]
-#         # part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
+        # done = False
+        # reward= 0
 
-#         # print('PART TO BOX:', part_to_dest)
-#         # if 10 < part_to_dest:
-#         #     reward -= part_to_dest
-#         # else: # Part reached box
-#         #     # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-#         #     ideal_part = _get_closest_part(part_pos)
-#         #     pos_error = np.linalg.norm(part_pos - ideal_part[0]) * 100
-#         #     rot_error = ((part_rot - ideal_part[1])**2).mean()
+        # part_pos, part_rot = self.part.get_world_pose()
+        # dest_box_pos = self.part.get_world_pose()[0]
+        # part_to_dest = np.linalg.norm(dest_box_pos - part_pos) * 100 # In cm
 
-#         #     print('PART REACHED BOX:', part_to_dest)
-#         #     # print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
-#         #     reward -= pos_error + rot_error
+        # print('PART TO BOX:', part_to_dest)
+        # if 10 < part_to_dest:
+        #     reward -= part_to_dest
+        # else: # Part reached box
+        #     # reward += (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+        #     ideal_part = _get_closest_part(part_pos)
+        #     pos_error = np.linalg.norm(part_pos - ideal_part[0]) * 100
+        #     rot_error = ((part_rot - ideal_part[1])**2).mean()
 
-#         # # if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
-#         # #         reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
-#         # #         done = True
+        #     print('PART REACHED BOX:', part_to_dest)
+        #     # print('THIS MUST BE TRUE ABOUT THE PUNISHMENT:', pos_error + rot_error, '<', MAX_STEP_PUNISHMENT) # CHeck the average punishment of stage 0 to see how much it tapers off
+        #     reward -= pos_error + rot_error
+
+        # # if not done and (part_pos[2] < 0.1 or self.max_steps <= self.step): # Part was dropped or time ran out means end
+        # #         reward -= (100 + self.max_steps - self.step) * MAX_STEP_PUNISHMENT
+        # #         done = True
         
-#         # if done:
-#         #     print('END REWARD TASK', self.name, ':', reward)
+        # if done:
+        #     print('END REWARD TASK', self.name, ':', reward)
 
-#         # return reward, done
+        # return reward, done
     
-# def _is_flipped(q1):
-#     """
-#     Bestimmt, ob die Rotation von q0 zu q1 ein "Umfallen" darstellt,
-#     basierend auf einem Winkel größer als 60 Grad zwischen der ursprünglichen
-#     z-Achse und ihrer Rotation.
+def _is_flipped(q1):
+    """
+    Bestimmt, ob die Rotation von q0 zu q1 ein "Umfallen" darstellt,
+    basierend auf einem Winkel größer als 60 Grad zwischen der ursprünglichen
+    z-Achse und ihrer Rotation.
 
-#     :param q0: Ursprüngliches Quaternion.
-#     :param q1: Neues Quaternion.
-#     :return: True, wenn der Winkel größer als 60 Grad ist, sonst False.
-#     """
-#     q0 = torch.tensor([0, 1, 0, 0])
-#     # Initialer Vektor, parallel zur z-Achse
-#     v0 = torch.tensor([0, 0, 1])
+    :param q0: Ursprüngliches Quaternion.
+    :param q1: Neues Quaternion.
+    :return: True, wenn der Winkel größer als 60 Grad ist, sonst False.
+    """
+    q0 = torch.tensor([0, 1, 0, 0])
+    # Initialer Vektor, parallel zur z-Achse
+    v0 = torch.tensor([0, 0, 1])
     
-#     # Konvertiere Quaternions in Rotation-Objekte
-#     rotation0 = R.from_quat(q0)
-#     rotation1 = R.from_quat(q1)
+    # Konvertiere Quaternions in Rotation-Objekte
+    rotation0 = R.from_quat(q0)
+    rotation1 = R.from_quat(q1)
     
-#     # Berechne die relative Rotation von q0 zu q1
-#     q_rel = rotation1 * rotation0.inv()
+    # Berechne die relative Rotation von q0 zu q1
+    q_rel = rotation1 * rotation0.inv()
     
-#     # Berechne den rotierten Vektor v1
-#     v1 = q_rel.apply(v0)
+    # Berechne den rotierten Vektor v1
+    v1 = q_rel.apply(v0)
     
-#     # Berechne den Winkel zwischen v0 und v1
-#     cos_theta = np.dot(v0, v1) / (np.linalg.norm(v0) * np.linalg.norm(v1))
-#     angle = np.arccos(np.clip(cos_theta, -1.0, 1.0)) * 180 / np.pi
+    # Berechne den Winkel zwischen v0 und v1
+    cos_theta = np.dot(v0, v1) / (np.linalg.norm(v0) * np.linalg.norm(v1))
+    angle = np.arccos(np.clip(cos_theta, -1.0, 1.0)) * 180 / np.pi
     
-#     # Prüfe, ob der Winkel größer als 60 Grad ist
-#     return angle > 60
-
-# def _shortest_rot_dist(quat_1, quat_2):
-#     part_quat = Quaternion(quat_1)
-#     ideal_quat = Quaternion(quat_2)
-#     return Quaternion.absolute_distance(part_quat, ideal_quat)
+    # Prüfe, ob der Winkel größer als 60 Grad ist
+    return angle > 60
