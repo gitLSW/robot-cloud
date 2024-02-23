@@ -56,12 +56,12 @@ class Value(DeterministicMixin, Model):
         return self.net(inputs["states"]), {}
 
 
-headless = False  # set headless to False for rendering
+headless = True  # set headless to False for rendering
 multi_threaded = headless
 env = get_env_instance(headless=headless, multi_threaded=multi_threaded) # Multithreaded doesn't work with UI open
 
 from omniisaacgymenvs.sim_config import SimConfig, merge
-from reaching_franka_omniverse_isaacgym_env import ReachingFrankaTask, TASK_CFG
+from franka_reach_task import ReachingFrankaTask, TASK_CFG
 
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
@@ -128,7 +128,7 @@ agent = PPO(models=models_ppo,
             action_space=env.action_space,
             device=device)
 
-# agent.load("./runs/24-02-18_18-11-49-077733_PPO/checkpoints/best_agent.pt")
+# agent.load("./runs/24-02-23_10-38-35-900063_PPO/checkpoints/best_agent.pt")
 
 # Configure and instantiate the RL trainer
 cfg_trainer = {"timesteps": 50_000_000 // TASK_CFG["task"]["env"]["numEnvs"], "headless": headless}
