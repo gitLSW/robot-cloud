@@ -59,16 +59,16 @@ multi_threaded = headless
 env = get_env_instance(headless=headless, multi_threaded=multi_threaded) # Multithreaded doesn't work with UI open
 
 from omniisaacgymenvs.sim_config import SimConfig, merge
-from pack_task import PackTask, TASK_CFG
+from pack_task import PackTask as Task, TASK_CFG
 
 TASK_CFG['name'] = name
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
-if not headless:
-    TASK_CFG["task"]["env"]["numEnvs"] = 100
+# if not headless:
+TASK_CFG["task"]["env"]["numEnvs"] = 16
 
 sim_config = SimConfig(TASK_CFG)
-task = PackTask(name=name, sim_config=sim_config, env=env)
+task = Task(name=name, sim_config=sim_config, env=env)
 env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True, rendering_dt=TASK_CFG['task']['sim']['dt'])
 # task.reset()
 
@@ -127,7 +127,7 @@ run = wandb.init(
 
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=15625, num_envs=TASK_CFG["task"]["env"]["numEnvs"], device=device)
+memory = RandomMemory(memory_size=1024, num_envs=TASK_CFG["task"]["env"]["numEnvs"], device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,

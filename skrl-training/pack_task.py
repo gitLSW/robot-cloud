@@ -136,18 +136,18 @@ class PackTask(RLTask):
         sim_s_step_freq (int): The amount of simulation steps within a SIMULATED second.
     """
     def __init__(self, name, sim_config, env, offset=None) -> None:
-        self.observation_space = spaces.Dict({
-            'robot_state': spaces.Box(low=-2 * torch.pi, high=2 * torch.pi, shape=(6,)),
-            'gripper_closed': spaces.Discrete(2),
-            # 'forces': spaces.Box(low=-1, high=1, shape=(8, 6)), # Forces on the Joints
-            'box_state': spaces.Box(low=-3, high=3, shape=(NUMBER_PARTS, 2)), # Pos and Rot Distance of each part currently placed in Box compared to currently gripped part
-            'part_pos_diff': spaces.Box(low=-3, high=3, shape=(3,)),
-            'part_rot_diff': spaces.Box(low=-1, high=1, shape=(3,))
-        })
+        # self.observation_space = spaces.Dict({
+        #     'robot_state': spaces.Box(low=-2 * torch.pi, high=2 * torch.pi, shape=(6,)),
+        #     'gripper_closed': spaces.Discrete(2),
+        #     # 'forces': spaces.Box(low=-1, high=1, shape=(8, 6)), # Forces on the Joints
+        #     'box_state': spaces.Box(low=-3, high=3, shape=(NUMBER_PARTS, 2)), # Pos and Rot Distance of each part currently placed in Box compared to currently gripped part
+        #     'part_pos_diff': spaces.Box(low=-3, high=3, shape=(3,)),
+        #     'part_rot_diff': spaces.Box(low=-1, high=1, shape=(3,))
+        # })
         self._num_observations = 13 + 2 * NUMBER_PARTS
 
         # End Effector Pose
-        self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float) # Delta Gripper Pose & gripper open / close
+        # self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float) # Delta Gripper Pose & gripper open / close
         self._num_actions = 7
 
         self.update_config(sim_config)
@@ -157,7 +157,6 @@ class PackTask(RLTask):
 
     def cleanup(self):
         super().cleanup()
-        self._env_steps = torch.zeros((self._num_envs, 1), device=self._device)
 
     def update_config(self, sim_config):
         self._sim_config = sim_config
@@ -255,30 +254,21 @@ class PackTask(RLTask):
 
         # set_camera_view(eye=ROBOT_POS + torch.tensor([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
     
-    # def next_part_reset(self, env_index):
-    #     box_pos = self._boxes.get_world_poses()[env_index][0]
-    #     self._placed_parts[env_index] = self._curr_parts[env_index]
-    #     next_part_num = int(self._parts[env_index].prim_path[len(s)-1]) + 1
-
-    #     env_part_path = f'self.default_zero_env_path/part_{next_part_num}'
-    #     part_usd_path = local_assets + '/draexlmaier_part.usd'
-    #     add_reference_to_stage(part_usd_path, env_part_path)
-    #     part = RigidPrim(prim_path=env_part_path,
-    #                      position=box_pos + PART_OFFSET,
-    #                      orientation=[0, 1, 0, 0],
-    #                      mass=0.5)
-    #     scene.add(self.part)
-
-
+    uninitialized = True
     def reset(self):
         self._placed_parts = [[] for i in range(self._num_envs)]
-        for robot in self._robots:
-            robot.initialize()
-        super().reset()
+        if self.uninitialized:
+            self.uninitialized = False
+            for robot in self._robots:
+                robot.initialize()
 
+        super().reset()
+        for envIndex in range(self.num_envs):
+            self.reset_env(env_index=envIndex, next_part=False)
+        
 
     def reset_env(self, env_index, next_part=False) -> None:
-        self._env_steps[env_index] = 0
+        self.progress_buf[env_index] = 0
 
         default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
 
@@ -290,9 +280,9 @@ class PackTask(RLTask):
         # if not self.kinematics_solver:
         #     self.kinematics_solver = KinematicsSolver(robot_articulation=robot, attach_gripper=True)
         
-        gripper_pos = torch.tensor(robot.gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.25])
-        self.part_pillars.set_world_poses([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
-        self.part_pillars.set_local_scales([1, 1, gripper_pos[2]],)
+        gripper_pos = torch.tensor(robot.gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.25], device=self._device)
+        # self.part_pillars.set_world_poses([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
+        # self.part_pillars.set_local_scales([1, 1, gripper_pos[2]],)
 
         if next_part:
             env0_part_path = self.default_zero_env_path + '/part_0'
@@ -308,13 +298,14 @@ class PackTask(RLTask):
         else:
             self._curr_parts[env_index].set_world_pose(gripper_pos, [0, 1, 0, 0])
 
-        return [{
-            'gripper_closed': True,
-            'robot_state': default_pose,
-            'box_state': torch.repeat([3, torch.pi], NUMBER_PARTS),
-            'part_pos_diff': torch.repeat(3, 3),
-            'part_rot_diff': torch.zeros(3)
-        } for _ in range(self._num_envs)]
+        # return [{
+        #     'gripper_closed': True,
+        #     'robot_state': default_pose,
+        #     'box_state': torch.repeat([3, torch.pi], NUMBER_PARTS),
+        #     'part_pos_diff': torch.repeat(3, 3),
+        #     'part_rot_diff': torch.zeros(3)
+        # } for _ in range(self._num_envs)]
+            return torch.zeros((self.num_observations,))
 
 
     # _placed_parts # [[part]] where each entry in the outer array is the placed parts for env at index
@@ -326,14 +317,14 @@ class PackTask(RLTask):
             return Quaternion.absolute_distance(part_quat, ideal_quat)
         
         boxes_pos = self._boxes_view.get_world_poses()[0] # Returns: [Array of all pos, Array of all rots]
-        obs_dicts = []
+        # obs_dicts = []
         for env_index in range(self.num_envs):
-            env_obs = { 'box_state': [] }
+            # env_obs = { 'box_state': [] }
 
             robot = self._robots[env_index]
             gripper_closed = robot.gripper.is_closed()
             self.obs_buf[env_index, 0] = gripper_closed
-            env_obs['gripper_closed'] = gripper_closed
+            # env_obs['gripper_closed'] = gripper_closed
             
             robot_state = robot.get_joint_positions()
             self.obs_buf[env_index, 1:7] = robot_state
@@ -350,7 +341,7 @@ class PackTask(RLTask):
                     # The worst possible distance is 3m and 180deg
                     self.obs_buf[env_index, (13 + 2 * part_index)] = torch.scalar_tensor(3)
                     self.obs_buf[env_index, (14 + 2 * part_index)] = torch.pi
-                    env_obs['box_state'].append([3, torch.pi])
+                    # env_obs['box_state'].append([3, torch.pi])
                     continue
 
                 part_pos, part_rot = eval_parts[part_index].get_world_pose()
@@ -369,7 +360,7 @@ class PackTask(RLTask):
 
                 self.obs_buf[env_index, (13 + 2 * part_index)] = min_dist
                 self.obs_buf[env_index, (14 + 2 * part_index)] = rot_dist
-                env_obs['box_state'].append([min_dist, rot_dist])
+                # env_obs['box_state'].append([min_dist, rot_dist])
 
                 if part_index == len(eval_parts) - 1:
                     part_pos_diff = part_pos - torch.tensor(ideal_part[0], device=self._device)
@@ -378,9 +369,9 @@ class PackTask(RLTask):
                     part_rot_diff = torch.tensor(ideal_rot_euler - part_rot_euler)
                     self.obs_buf[env_index, 7:10] = part_pos_diff
                     self.obs_buf[env_index, 10:13] =  part_rot_diff
-                    env_obs['part_pos_diff'] = part_pos_diff
-                    env_obs['part_rot_diff'] = part_rot_diff
-            obs_dicts.append(env_obs)
+                    # env_obs['part_pos_diff'] = part_pos_diff
+                    # env_obs['part_rot_diff'] = part_rot_diff
+            # obs_dicts.append(env_obs)
         
         # The return is itrrelevant for Multi Threading:
         # The VecEnvMT Loop calls RLTask.post_physics_step to get all the data from one step.
@@ -391,45 +382,34 @@ class PackTask(RLTask):
         # - calculate_metrics()
         # - is_done()
         # - get_extras()
-        return obs_dicts
+            
+        # return obs_dicts
+        return self.obs_buf[env_index]
 
 
 
     def pre_physics_step(self, actions) -> None:
-        pass
-        # gripper = self.robot.gripper
-        
-        # if self.step == LEARNING_STARTS - 1:
-        #     gripper.close()
-        #     return
-        # elif self.step == LEARNING_STARTS:
-        #     self.part_pillars.set_world_poses([0, 0, -100])
-        #     return
-        # elif self.step < LEARNING_STARTS:
-        #     return
-        
-        # if self.step < LEARNING_STARTS:
-        #     return
-        
-        # # Rotate Joints
-        # joint_rots = self.robot.get_joint_positions()
-        # joint_rots += np.array(actions[0:6]) * self.__joint_rot_max
-        # self.robot.set_joint_positions(positions=joint_rots)
-        # # Open or close Gripper
-        # gripper = self.robot.gripper
-        # is_closed = gripper.is_closed()
-        # gripper_action = actions[6]
-        # if 0.9 < gripper_action and not is_closed:
-        #     gripper.close()
-        # elif gripper_action < -0.9 and is_closed:
-        #     gripper.open()
+        for env_index in range(self.num_envs):
+            # Rotate Joints
+            robot = self._robots[env_index]
+            joint_rots = robot.get_joint_positions()
+            joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
+            robot.set_joint_positions(positions=joint_rots)
 
-        # is_closed = gripper.is_closed()
-        # if 0.9 < gripper_action and not is_closed:
-        #     gripper.close()
-        # elif gripper_action < -0.9 and is_closed:
-        #     gripper.open()
+            gripper = robot.gripper
 
+            # Keep part in gripper after reset
+            if self.progress_buf[env_index] == 1:
+                gripper.close()
+                continue
+
+            # Open or close Gripper
+            is_closed = gripper.is_closed()
+            gripper_action = actions[env_index, 6]
+            if 0.9 < gripper_action and is_closed:
+                gripper.open()
+            elif gripper_action < -0.3 and not is_closed:
+                gripper.close()
 
     
     # Calculate Rewards
