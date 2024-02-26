@@ -28,7 +28,7 @@ from omni.kit.viewport.utility import get_active_viewport
 import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
-from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup
+from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup, setPhysics, removePhysics
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
@@ -211,15 +211,14 @@ class PackTask(RLTask):
         box_usd_path = assets_root_path + '/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd'
         box_usd_path = local_assets + '/SM_CardBoxA_02.usd'
         add_reference_to_stage(box_usd_path, env0_box_path)
-        box = RigidPrim(prim_path=env0_box_path,
+        box = XFormPrim(prim_path=env0_box_path,
                         position=DEST_BOX_POS,
                         scale=[1, 1, 0.4])
-        setRigidBody(box.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
+        setStaticCollider(box.prim, approximationShape='convexDecomposition')
         self._boxes_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/box',
-                                    name='box_view',
-                                    reset_xform_properties=False)
+                                         name='box_view',
+                                         reset_xform_properties=False)
         scene.add(self._boxes_view)
-
 
         env0_part_path = self.default_zero_env_path + '/part_0'
         part_usd_path = local_assets + '/draexlmaier_part.usd'
@@ -268,8 +267,6 @@ class PackTask(RLTask):
         
 
     def reset_env(self, env_index, next_part=False) -> None:
-        self.progress_buf[env_index] = 0
-
         default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
 
         robot = self._robots[env_index]
@@ -296,7 +293,8 @@ class PackTask(RLTask):
             self._placed_parts[env_index].append(self._curr_parts[env_index])
             self._curr_parts[env_index] = part
         else:
-            self._curr_parts[env_index].set_world_pose(gripper_pos, [0, 1, 0, 0])
+            self.progress_buf[env_index] = 0
+            # self._curr_parts[env_index].set_world_pose(gripper_pos, [0, 1, 0, 0])
 
         # return [{
         #     'gripper_closed': True,
