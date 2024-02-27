@@ -5,6 +5,7 @@ import torch
 from pxr import Gf, UsdLux, Sdf
 from gymnasium import spaces
 
+import omni.kit.commands
 from omni.isaac.core.utils.extensions import enable_extension
 # enable_extension("omni.importer.urdf")
 enable_extension("omni.isaac.universal_robots")
@@ -28,7 +29,7 @@ from omni.kit.viewport.utility import get_active_viewport
 import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
-from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setCollider, addCollisionGroup, setPhysics, removePhysics
+from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
@@ -127,6 +128,7 @@ TASK_CFG = {
 
 
 class PackTask(RLTask):
+    control_frequency_inv = 1
     # kinematics_solver = None
     
     """
@@ -223,22 +225,22 @@ class PackTask(RLTask):
         env0_part_path = self.default_zero_env_path + '/part_0'
         part_usd_path = local_assets + '/draexlmaier_part.usd'
         add_reference_to_stage(part_usd_path, env0_part_path)
-        part = RigidPrim(prim_path=env0_part_path,
+        part = XFormPrim(prim_path=env0_part_path,
                          position=DEST_BOX_POS + PART_OFFSET,
-                         orientation=[0, 1, 0, 0],
-                         mass=0.5)
-        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
-        parts_view = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/part_0',
+                         orientation=[0, 1, 0, 0]) # [-0.70711, 0.70711, 0, 0]
+        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
+        parts_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/part_0',
                                    name='part_view',
                                    reset_xform_properties=False)
         scene.add(parts_view)
-        self._curr_parts = [RigidPrim(prim_path=path) for path in parts_view.prim_paths]
+        self._curr_parts = [XFormPrim(prim_path=path) for path in parts_view.prim_paths]
         
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
         env0_robot_path = self.default_zero_env_path + '/robot'
-        _ = UR10(prim_path=env0_robot_path, name='UR10', position=ROBOT_POS, attach_gripper=True)
+        robot = UR10(prim_path=env0_robot_path, name='UR10', position=ROBOT_POS, attach_gripper=True)
+        robot.set_enabled_self_collisions(True)
         robots_view = RobotView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot', name='ur10_view')
         scene.add(robots_view)
         self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in robots_view.prim_paths]
@@ -253,57 +255,51 @@ class PackTask(RLTask):
 
         # set_camera_view(eye=ROBOT_POS + torch.tensor([1.5, 6, 1.5]), target=ROBOT_POS, camera_prim_path="/OmniverseKit_Persp")
     
-    uninitialized = True
     def reset(self):
-        self._placed_parts = [[] for i in range(self._num_envs)]
-        if self.uninitialized:
-            self.uninitialized = False
-            for robot in self._robots:
-                robot.initialize()
-
         super().reset()
-        for envIndex in range(self.num_envs):
-            self.reset_env(env_index=envIndex, next_part=False)
+        super().cleanup()
+        self._placed_parts = [[] for _ in range(self._num_envs)]
         
+        for env_index in range(self.num_envs):
+            robot = self._robots[env_index]
+            if not robot.handles_initialized:
+                robot.initialize()
+            self.reset_env(env_index)
+    
+    def reset_env(self, env_index):
+        self.progress_buf[env_index] = 0
+        self.reset_robot(env_index)
+        self.reset_part(env_index)
 
-    def reset_env(self, env_index, next_part=False) -> None:
-        default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
-
+    def reset_robot(self, env_index):
         robot = self._robots[env_index]
+        default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
         robot.set_joint_positions(positions=default_pose)
-        
-        # super().cleanup()
+        robot.gripper.open()
 
-        # if not self.kinematics_solver:
-        #     self.kinematics_solver = KinematicsSolver(robot_articulation=robot, attach_gripper=True)
-        
-        gripper_pos = torch.tensor(robot.gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.25], device=self._device)
-        # self.part_pillars.set_world_poses([gripper_pos[0], gripper_pos[1], gripper_pos[2] / 2])
-        # self.part_pillars.set_local_scales([1, 1, gripper_pos[2]],)
+    def reset_part(self, env_index):
+        gripper = self._robots[env_index].gripper
+        part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.17], device=self._device)
+        part = self._curr_parts[env_index]
+        part.set_world_pose(part_pos, [0, 1, 0, 0])
+        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False)
 
-        if next_part:
-            env0_part_path = self.default_zero_env_path + '/part_0'
-            part_usd_path = local_assets + '/draexlmaier_part.usd'
-            add_reference_to_stage(part_usd_path, env0_part_path)
-            part = RigidPrim(prim_path=env0_part_path,
-                            position=gripper_pos,
-                            orientation=[0, 1, 0, 0],
-                            mass=0.5)
-            self.world.scene.add(part)
-            self._placed_parts[env_index].append(self._curr_parts[env_index])
-            self._curr_parts[env_index] = part
-        else:
-            self.progress_buf[env_index] = 0
-            # self._curr_parts[env_index].set_world_pose(gripper_pos, [0, 1, 0, 0])
 
-        # return [{
-        #     'gripper_closed': True,
-        #     'robot_state': default_pose,
-        #     'box_state': torch.repeat([3, torch.pi], NUMBER_PARTS),
-        #     'part_pos_diff': torch.repeat(3, 3),
-        #     'part_rot_diff': torch.zeros(3)
-        # } for _ in range(self._num_envs)]
-            return torch.zeros((self.num_observations,))
+
+    # def next_part(self, env_index) -> None:
+    #     gripper = self._robots[env_index].gripper
+    #     gripper_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.05], device=self._device)
+
+    #     env0_part_path = self.default_zero_env_path + '/part_0'
+    #     part_usd_path = local_assets + '/draexlmaier_part.usd'
+    #     add_reference_to_stage(part_usd_path, env0_part_path)
+    #     part = RigidPrim(prim_path=env0_part_path,
+    #                     position=gripper_pos,
+    #                     orientation=[0, 1, 0, 0],
+    #                     mass=0.5)
+    #     self.world.scene.add(part)
+    #     self._placed_parts[env_index].append(self._curr_parts[env_index])
+    #     self._curr_parts[env_index] = part
 
 
     # _placed_parts # [[part]] where each entry in the outer array is the placed parts for env at index
@@ -387,32 +383,40 @@ class PackTask(RLTask):
 
 
     def pre_physics_step(self, actions) -> None:
+        # reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        # if len(reset_env_ids) > 0:
+        #     self.reset_idx(reset_env_ids)
+
         for env_index in range(self.num_envs):
+            if self.reset_buf[env_index]:
+                self.reset_env(env_index)
+                return
+            
             # Rotate Joints
             robot = self._robots[env_index]
+            gripper = robot.gripper
+
+            if self.progress_buf[env_index] == 1:
+                gripper.close()
+                return
+
             joint_rots = robot.get_joint_positions()
             joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
             robot.set_joint_positions(positions=joint_rots)
 
-            gripper = robot.gripper
-
-            # Keep part in gripper after reset
-            if self.progress_buf[env_index] == 1:
-                gripper.close()
-                continue
-
             # Open or close Gripper
             is_closed = gripper.is_closed()
             gripper_action = actions[env_index, 6]
-            if 0.9 < gripper_action and is_closed:
-                gripper.open()
-            elif gripper_action < -0.3 and not is_closed:
-                gripper.close()
+            # if 0.9 < gripper_action and is_closed:
+            #     gripper.open()
+            # elif gripper_action < -0.3 and not is_closed:
+            #     gripper.close()
 
     
     # Calculate Rewards
     def calculate_metrics(self) -> None:
-        return 0, False
+        self.reset_buf = self.progress_buf >= 30
+
         # Terminate: Umgefallene Teile, Gefallene Teile
         # Success: 
         # part_pos, part_rot = self.part.get_world_pose()
