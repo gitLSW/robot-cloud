@@ -29,7 +29,7 @@ from omni.kit.viewport.utility import get_active_viewport
 import omni.isaac.core.objects as objs
 import omni.isaac.core.utils.numpy.rotations as rot_utils
 from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
-from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics
+from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics, removeRigidBody
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
@@ -265,11 +265,11 @@ class PackTask(RLTask):
             if not robot.handles_initialized:
                 robot.initialize()
             self.reset_env(env_index)
-    
+            
     def reset_env(self, env_index):
         self.progress_buf[env_index] = 0
+        self.reset_buf[env_index] = False
         self.reset_robot(env_index)
-        self.reset_part(env_index)
 
     def reset_robot(self, env_index):
         robot = self._robots[env_index]
@@ -279,10 +279,11 @@ class PackTask(RLTask):
 
     def reset_part(self, env_index):
         gripper = self._robots[env_index].gripper
-        part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.17], device=self._device)
+        part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([-0.00147, 0.0154, 0.193], device=self._device)
         part = self._curr_parts[env_index]
-        part.set_world_pose(part_pos, [0, 1, 0, 0])
-        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False)
+        part.set_world_pose(part_pos, [-0.70711, 0.70711, 0, -0.06])
+        # removePhysics(part.prim)
+        # setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False)
 
 
 
@@ -390,23 +391,27 @@ class PackTask(RLTask):
         for env_index in range(self.num_envs):
             if self.reset_buf[env_index]:
                 self.reset_env(env_index)
-                return
+                continue
             
             # Rotate Joints
             robot = self._robots[env_index]
             gripper = robot.gripper
 
-            if self.progress_buf[env_index] == 1:
+            env_step = self.progress_buf[env_index]
+            if env_step == 1:
+                # We cannot call this in the same step as reset robot since the world needs
+                # to update once to update the gripper position to the new joint rotations
+                self.reset_part(env_index)
                 gripper.close()
-                return
+                continue
 
             joint_rots = robot.get_joint_positions()
             joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
             robot.set_joint_positions(positions=joint_rots)
 
             # Open or close Gripper
-            is_closed = gripper.is_closed()
-            gripper_action = actions[env_index, 6]
+            # is_closed = gripper.is_closed()
+            # gripper_action = actions[env_index, 6]
             # if 0.9 < gripper_action and is_closed:
             #     gripper.open()
             # elif gripper_action < -0.3 and not is_closed:
@@ -415,6 +420,12 @@ class PackTask(RLTask):
     
     # Calculate Rewards
     def calculate_metrics(self) -> None:
+        # part_pos_diffs = self.obs_buf[:, 7:10]
+        # part_rot_diffs = self.obs_buf[:, 10:13]
+        # box_states = self.obs_buf[:, 13:(2 * NUMBER_PARTS)]
+
+        # self.rew_buf = part_pos_diffs.squared().sum(dim=1) + part_rot_diffs.squared().sum(dim=1) + box_states.squared().sum(dim=1)
+
         self.reset_buf = self.progress_buf >= 30
 
         # Terminate: Umgefallene Teile, Gefallene Teile
