@@ -105,7 +105,10 @@ ddpg_cfg = merge({
     "random_timesteps": 80,
     "learning_starts": 80,
     "state_preprocessor": RunningStandardScaler,
-    "state_preprocessor_kwargs": {"size": env.observation_space, "device": device},
+    "state_preprocessor_kwargs": {
+        "size": env.observation_space, 
+        "device": device
+    },
     "experiment": {
         "directory": f"progress/{name}",            # experiment's parent directory
         "experiment_name": name,      # experiment name

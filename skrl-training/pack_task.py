@@ -57,9 +57,9 @@ PART_PILLAR_PATH = "World/Pillar"
 
 MAX_STEP_PUNISHMENT = 300
 
-START_TABLE_POS = torch.tensor([0.36, 0.8, 0])
+START_TABLE_POS = torch.tensor([0, 0.8, FALLEN_PART_THRESHOLD])
 START_TABLE_HEIGHT = 0.6
-START_TABLE_CENTER = START_TABLE_POS + torch.tensor([0, 0, START_TABLE_HEIGHT])
+START_TABLE_CENTER = START_TABLE_POS + torch.tensor([0, 0, START_TABLE_HEIGHT / 2])
 
 IDEAL_PACKAGING = [([-0.06, -0.19984, 0.0803], [0.072, 0.99, 0, 0]),
                    ([-0.06, -0.14044, 0.0803], [0.072, 0.99, 0, 0]),
@@ -206,13 +206,15 @@ class PackTask(RLTask):
         # self._grippers = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot/ee_link', name="gripper_view")
         # scene.add(self._grippers)
 
-        self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in self._robots_view.prim_paths]
+        self._table_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/table',
+                                         name='table_view',
+                                         reset_xform_properties=False)
+        scene.add(self._table_view)
 
+        self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in self._robots_view.prim_paths]
         # self._curr_parts = [XFormPrim(prim_path=path) for path in self._parts_view.prim_paths]
         
-        # # self.table = RigidPrim(rim_path=self._start_table_path, name='TABLE')
-        # self._task_objects[self._start_table_path] = self.table
-    
+
     def create_env0(self):
         # This is the URL from which the Assets are downloaded
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
@@ -232,7 +234,7 @@ class PackTask(RLTask):
             part_usd_path = local_assets + '/draexlmaier_part.usd'
             add_reference_to_stage(part_usd_path, env0_part_path)
             part = RigidPrim(prim_path=env0_part_path,
-                            position=START_TABLE_CENTER + torch.tensor([0, 0.1 * i - 0.2, 0.1]),
+                            position=START_TABLE_CENTER + torch.tensor([0, 0.1 * i - 0.23, 0.04]),
                             orientation=[0, 1, 0, 0], # [-0.70711, 0.70711, 0, 0]
                             mass=0.4)
             setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
@@ -255,7 +257,7 @@ class PackTask(RLTask):
 
     def reset(self):
         super().reset()
-        super().cleanup()   
+        super().cleanup()
         for robot in self._robots:
             if not robot.handles_initialized:
                 robot.initialize()
@@ -269,16 +271,16 @@ class PackTask(RLTask):
         self.reset_parts(env_indices)
 
     def reset_robots(self, env_indices):
-        default_pose = torch.tensor([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0]).repeat(self._num_envs, 1)
+        default_pose = torch.tensor([-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
         self._robots_view.set_joint_positions(default_pose, indices=env_indices)
 
     def reset_parts(self, env_indices):
-        print('RESETTING PARTS')
-        default_pos = START_TABLE_CENTER.repeat(len(env_indices), 1)
+        # default_pos = START_TABLE_CENTER.repeat(len(env_indices), 1)
+        table_pos = self._table_view.get_world_poses(indices=env_indices)[0]
         default_rots = torch.tensor([0, 1, 0, 0]).repeat(len(env_indices), 1)
         for i in range(NUMBER_PARTS):
-            parts_offsets = torch.tensor([0, 0.1 * i - 0.2, 0.1]).repeat(len(env_indices), 1)
-            self._parts_views[i].set_world_poses(positions=default_pos + parts_offsets + self._env_pos[i].cpu(),
+            parts_offsets = torch.tensor([0, 0.1 * i - 0.23, START_TABLE_HEIGHT / 2 + 0.04]).repeat(len(env_indices), 1).to(self._device)
+            self._parts_views[i].set_world_poses(positions=table_pos + parts_offsets,
                                                  orientations=default_rots,
                                                  indices=env_indices)
 
@@ -348,7 +350,6 @@ class PackTask(RLTask):
                             gripper_to_ideal_part_dist = gripper_ideal_dist
                             gripper_to_ideal_part_dir = gripper_to_ideal_part
 
-
                 rot_dist = _shortest_rot_dist(part_rot, ideal_part[1])
                 
                 # Clip obs
@@ -360,7 +361,7 @@ class PackTask(RLTask):
                 self.obs_buf[env_index, (10 + NUMBER_PARTS + part_index)] = rot_dist
 
             # Point to target
-            self.obs_buf[env_index, 7:10] = gripper_to_ideal_part_dir if gripper_to_closest_part_dist < 0.05 else gripper_to_closest_part_dir
+            self.obs_buf[env_index, 7:10] = gripper_to_ideal_part_dir if gripper_to_closest_part_dist < 0.05 and gripper_closed else gripper_to_closest_part_dir
 
 
     def pre_physics_step(self, actions) -> None:
@@ -402,7 +403,7 @@ class PackTask(RLTask):
             parts_pos = parts_view.get_world_poses()[0]
 
             # Check if part has fallen
-            # self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
+            self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
 
             # if _is_flipped(part_rot):
             #     any_flipped = True
