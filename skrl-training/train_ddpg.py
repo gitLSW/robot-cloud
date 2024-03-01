@@ -64,8 +64,8 @@ from pack_task import PackTask as Task, TASK_CFG
 TASK_CFG['name'] = name
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
-# if not headless:
-TASK_CFG["task"]["env"]["numEnvs"] = 16
+if not headless:
+    TASK_CFG["task"]["env"]["numEnvs"] = 16
 
 sim_config = SimConfig(TASK_CFG)
 task = Task(name=name, sim_config=sim_config, env=env)
@@ -89,6 +89,8 @@ models = {
     'target_critic': Critic(env.observation_space, env.action_space, device),
 }
 
+num_envs = TASK_CFG["task"]["env"]["numEnvs"]
+
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
 ddpg_cfg = DDPG_DEFAULT_CONFIG.copy()
@@ -110,27 +112,26 @@ ddpg_cfg = merge({
         "device": device
     },
     "experiment": {
-        "directory": f"progress/{name}",            # experiment's parent directory
-        "experiment_name": name,      # experiment name
-        "write_interval": 250,      # TensorBoard writing interval (timesteps)
-        "checkpoint_interval": 1000,        # interval for checkpoints (timesteps)
-        "store_separately": False,          # whether to store checkpoints separately
-        "wandb": True,             # whether to use Weights & Biases
-        "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
+        "directory": f"progress", # experiment's parent directory
+        "experiment_name": name, # experiment name
+        "write_interval": 50, # TensorBoard writing interval (iterations)
+        "checkpoint_interval": 200, # interval for checkpoints (iterations)
+        "store_separately": False, # whether to store checkpoints separately
+        "wandb": True, # whether to use Weights & Biases
+        "wandb_kwargs": {} # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
     }
 }, ddpg_cfg)
 
 run = wandb.init(
     project=name,
     config=ddpg_cfg,
-    sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-    # monitor_gym=True,  # auto-upload the videos of agents playing the game
-    # save_code=True,  # optional
+    sync_tensorboard=True, # auto-upload sb3's tensorboard metrics
+    # monitor_gym=True, # auto-upload the videos of agents playing the game
+    # save_code=True, # optional
 )
 
-
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=1024, num_envs=TASK_CFG["task"]["env"]["numEnvs"], device=device)
+memory = RandomMemory(memory_size=25000, num_envs=num_envs, device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,
@@ -138,10 +139,10 @@ agent = DDPG(models=models,
              action_space=env.action_space,
              device=device)
 
-# agent.load("./runs/24-02-18_18-11-49-077733_PPO/checkpoints/best_agent.pt")
+agent.load("./progress/DDPG_Pack/checkpoints/best_agent.pt")
 
 # Configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 50_000_000 // TASK_CFG["task"]["env"]["numEnvs"], "headless": headless}
+cfg_trainer = {"timesteps": 50_000_000 // num_envs, "headless": headless}
 trainer = ParallelTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 if multi_threaded:

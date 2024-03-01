@@ -82,7 +82,7 @@ TASK_CFG = {
         "name": 'Pack_Task',
         "physics_engine": "physx",
         "env": {
-            "numEnvs": 100,
+            "numEnvs": 512,
             "envSpacing": 4,
             "episodeLength": 300,
             # "enableDebugVis": False,
@@ -218,7 +218,7 @@ class PackTask(RLTask):
     def create_env0(self):
         # This is the URL from which the Assets are downloaded
         # Make sure you started and connected to your localhost Nucleus Server via Omniverse !!!
-        assets_root_path = get_assets_root_path()
+        # assets_root_path = get_assets_root_path()
 
         env0_box_path = self.default_zero_env_path + '/box'
         # box_usd_path = assets_root_path + '/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd'
@@ -243,12 +243,15 @@ class PackTask(RLTask):
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
         env0_robot_path = self.default_zero_env_path + '/robot'
-        robot = UR10(prim_path=env0_robot_path, name='UR10', position=ROBOT_POS, attach_gripper=True)
+        robot = UR10(prim_path=env0_robot_path,
+                     name='UR10',
+                     usd_path=f'{local_assets}/ur10.usd',
+                     position=ROBOT_POS, attach_gripper=True)
         robot.set_enabled_self_collisions(True)
 
         env0_table_path = f'{self.default_zero_env_path}/table'
-        table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
-        # table_path = local_assets + '/table_low.usd'
+        # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
+        table_path = local_assets + '/table_low.usd'
         add_reference_to_stage(table_path, env0_table_path)
         table = XFormPrim(prim_path=env0_table_path,
                           position=START_TABLE_POS,
