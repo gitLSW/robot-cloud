@@ -18,8 +18,8 @@ env = GymEnvMT(max_steps = MAX_STEPS_PER_EPISODE,
                experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 spacing = 5
 offsets = []
-tasks_per_side_1 = 10
-tasks_per_side_2 = 10
+tasks_per_side_1 = 1
+tasks_per_side_2 = 1
 NUM_ENVS = tasks_per_side_1 * tasks_per_side_2
 for i in range(tasks_per_side_1):
     for j in range(tasks_per_side_2):

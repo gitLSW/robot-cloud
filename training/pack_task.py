@@ -1,63 +1,35 @@
 import os
 import math
-import random
 import torch
-from pxr import Gf, UsdLux, Sdf
 from gymnasium import spaces
 
-import omni.kit.commands
 from omni.isaac.core.utils.extensions import enable_extension
-# enable_extension("omni.importer.urdf")
 enable_extension("omni.isaac.universal_robots")
-enable_extension("omni.isaac.sensor")
-# from omni.importer.urdf import _urdf
-from omni.isaac.sensor import Camera
-from omni.isaac.universal_robots.ur10 import UR10
-from omni.isaac.universal_robots import KinematicsSolver
-# from omni.isaac.universal_robots.controllers.pick_place_controller import PickPlaceController
+# enable_extension("omni.isaac.sensor")
 
-import omni.isaac.core.utils.prims as prims_utils
-from omni.isaac.core.prims import XFormPrim, XFormPrimView, RigidPrim, RigidPrimView
-from omni.isaac.core.materials.physics_material import PhysicsMaterial
-from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
-from omni.isaac.core.tasks.base_task import BaseTask
-from omni.isaac.gym.tasks.rl_task import RLTaskInterface
 from omni.isaac.core.utils.nucleus import get_assets_root_path
+# from omni.isaac.core.utils.prims import create_prim, get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.isaac.core.utils.viewports import set_camera_view
-from omni.kit.viewport.utility import get_active_viewport
-import omni.isaac.core.objects as objs
-import omni.isaac.core.utils.numpy.rotations as rot_utils
-from omni.isaac.core.utils.rotations import lookat_to_quatf, gf_quat_to_np_array
-from omni.physx.scripts.utils import setRigidBody, setStaticCollider, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics, removeRigidBody
+from omni.physx.scripts.utils import setRigidBody, setStaticCollider #, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics, removeRigidBody
+
+from omni.isaac.universal_robots.ur10 import UR10
+from omni.isaac.core.prims import XFormPrim, XFormPrimView, RigidPrim, RigidPrimView
+from omni.isaac.core.robots.robot_view import RobotView
+# from omni.isaac.core.materials.physics_material import PhysicsMaterial
+
+from omniisaacgymenvs.rl_task import RLTask
 from scipy.spatial.transform import Rotation as R
 from pyquaternion import Quaternion
 
-from omniisaacgymenvs.rl_task import RLTask
-from omni.isaac.core.robots.robot_view import RobotView
-from omni.isaac.cloner import GridCloner
 
-LEARNING_STARTS = 10
 
 FALLEN_PART_THRESHOLD = 0.2
 
-ROBOT_PATH = 'World/UR10e'
 ROBOT_POS = torch.tensor([0.0, 0.0, FALLEN_PART_THRESHOLD])
 
-LIGHT_PATH = 'World/Light'
-LIGHT_OFFSET = torch.tensor([0, 0, 2])
-
-DEST_BOX_PATH = "World/DestinationBox"
 DEST_BOX_POS = torch.tensor([0, -0.65, FALLEN_PART_THRESHOLD])
 
-PART_PATH = 'World/Part'
-PART_OFFSET = torch.tensor([0, 0, 0.4])
-# NUM_PARTS = 5
-PART_PILLAR_PATH = "World/Pillar"
-
-MAX_STEP_PUNISHMENT = 300
-
-START_TABLE_POS = torch.tensor([0, 0.8, FALLEN_PART_THRESHOLD])
+START_TABLE_POS = torch.tensor([0, 0.8, FALLEN_PART_THRESHOLD + 0.18])
 START_TABLE_HEIGHT = 0.6
 START_TABLE_CENTER = START_TABLE_POS + torch.tensor([0, 0, START_TABLE_HEIGHT / 2])
 
@@ -76,11 +48,11 @@ TASK_CFG = {
     "device_id": 0,
     "headless": False,
     "multi_gpu": False,
-    "sim_device": "cpu",
+    "sim_device": "gpu",
     "enable_livestream": False,
     "task": {
         "name": 'Pack_Task',
-        "physics_engine": "physx",
+        # "physics_engine": "physx",
         "env": {
             "numEnvs": 512,
             "envSpacing": 4,
@@ -89,42 +61,61 @@ TASK_CFG = {
             # "controlFrequencyInv": 4
         },
         "sim": {
-            "dt": 1 / 60,
-            "use_gpu_pipeline": True,
+            "dt": 1.0 / 60.0,
             "gravity": [0.0, 0.0, -9.81],
+            "substeps": 1,
+            "use_gpu_pipeline": False, # Must be off for gripper to work
             "add_ground_plane": True,
-            "use_flatcache": True,
-            "enable_scene_query_support": False,
+            "add_distant_light": True,
+            "use_fabric": True,
+            "enable_scene_query_support": True, # Must be on for gripper to work
             "enable_cameras": False,
+            "disable_contact_processing": False, # Must be off for gripper to work
+            "use_flatcache": True,
             "default_physics_material": {
                 "static_friction": 1.0,
                 "dynamic_friction": 1.0,
                 "restitution": 0.0
             },
             "physx": {
-                "worker_thread_count": 4,
-                "solver_type": 1,
+                ### Per-scene settings
                 "use_gpu": True,
-                "solver_position_iteration_count": 4,
-                "solver_velocity_iteration_count": 1,
-                "contact_offset": 0.005,
-                "rest_offset": 0.0,
+                "worker_thread_count": 4,
+                "solver_type": 1,  # 0: PGS, 1:TGS
                 "bounce_threshold_velocity": 0.2,
-                "friction_offset_threshold": 0.04,
-                "friction_correlation_distance": 0.025,
+                "friction_offset_threshold": 0.04,  # A threshold of contact separation distance used to decide if a contact
+                # point will experience friction forces.
+                "friction_correlation_distance": 0.025,  # Contact points can be merged into a single friction anchor if the
+                # distance between the contacts is smaller than correlation distance.
+                # disabling these can be useful for debugging
                 "enable_sleeping": True,
                 "enable_stabilization": True,
-                "max_depenetration_velocity": 1000.0,
-                "gpu_max_rigid_contact_count": 524288,
-                "gpu_max_rigid_patch_count": 33554432,
-                "gpu_found_lost_pairs_capacity": 524288,
-                "gpu_found_lost_aggregate_pairs_capacity": 262144,
-                "gpu_total_aggregate_pairs_capacity": 1048576,
-                "gpu_max_soft_body_contacts": 1048576,
-                "gpu_max_particle_contacts": 1048576,
-                "gpu_heap_capacity": 33554432,
-                "gpu_temp_buffer_capacity": 16777216,
-                "gpu_max_num_partitions": 8
+                # GPU buffers
+                "gpu_max_rigid_contact_count": 512 * 1024,
+                "gpu_max_rigid_patch_count": 80 * 1024,
+                "gpu_found_lost_pairs_capacity": 1024,
+                "gpu_found_lost_aggregate_pairs_capacity": 1024,
+                "gpu_total_aggregate_pairs_capacity": 1024,
+                "gpu_max_soft_body_contacts": 1024 * 1024,
+                "gpu_max_particle_contacts": 1024 * 1024,
+                "gpu_heap_capacity": 64 * 1024 * 1024,
+                "gpu_temp_buffer_capacity": 16 * 1024 * 1024,
+                "gpu_max_num_partitions": 8,
+                "gpu_collision_stack_size": 64 * 1024 * 1024,
+                ### Per-actor settings ( can override in actor_options )
+                "solver_position_iteration_count": 4,
+                "solver_velocity_iteration_count": 1,
+                "sleep_threshold": 0.0,  # Mass-normalized kinetic energy threshold below which an actor may go to sleep.
+                # Allowed range [0, max_float).
+                "stabilization_threshold": 0.0,  # Mass-normalized kinetic energy threshold below which an actor may
+                # participate in stabilization. Allowed range [0, max_float).
+                ### Per-body settings ( can override in actor_options )
+                "enable_gyroscopic_forces": False,
+                "density": 1000.0,  # density to be used for bodies that do not specify mass or density
+                "max_depenetration_velocity": 100.0,
+                ### Per-shape settings ( can override in actor_options )
+                "contact_offset": 0.02,
+                "rest_offset": 0.001,
             }
         }
     }
@@ -151,10 +142,14 @@ class PackTask(RLTask):
         #     # 'part_rot_diff': spaces.Box(low=-1, high=1, shape=(3,))
         # })
         self._num_observations = 10 + 2 * NUMBER_PARTS
-
+        self.observation_space = spaces.Dict({
+            'obs': spaces.Box(low=-math.pi, high=math.pi, shape=(self._num_observations,), dtype=float)
+        })
+        
         # End Effector Pose
         # self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=float) # Delta Gripper Pose & gripper open / close
         self._num_actions = 7
+        self.action_space = spaces.Box(low=-1, high=1, shape=(self._num_actions,), dtype=float)
 
         self.update_config(sim_config)
 
@@ -178,14 +173,14 @@ class PackTask(RLTask):
         # Robot turning ange of max speed is 191deg/s
         self._max_joint_rot_speed = (191.0 * math.pi / 180) * self.dt
         
-        super().update_config(sim_config)
+        # super().update_config(sim_config)
 
 
     def set_up_scene(self, scene) -> None:
         print('SETUP TASK', self.name)
         
         self.create_env0()
-        super().set_up_scene(scene) # Clones env0
+        super().set_up_scene(scene=scene, replicate_physics=True, filter_collisions=False, copy_from_source=True) # Clones env0
 
         self._boxes_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/box',
                                          name='box_view',
@@ -203,16 +198,12 @@ class PackTask(RLTask):
         self._robots_view = RobotView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot', name='ur10_view')
         scene.add(self._robots_view)
 
-        # self._grippers = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot/ee_link', name="gripper_view")
-        # scene.add(self._grippers)
-
         self._table_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/table',
                                          name='table_view',
                                          reset_xform_properties=False)
         scene.add(self._table_view)
 
         self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in self._robots_view.prim_paths]
-        # self._curr_parts = [XFormPrim(prim_path=path) for path in self._parts_view.prim_paths]
         
 
     def create_env0(self):
@@ -242,12 +233,15 @@ class PackTask(RLTask):
         # The UR10e has 6 joints, each with a maximum:
         # turning angle of -360 deg to +360 deg
         # turning ange of max speed is 191deg/s
+        # gripper_usd = assets_root_path + "/Isaac/Robots/UR10/Props/long_gripper.usd"
         env0_robot_path = self.default_zero_env_path + '/robot'
         robot = UR10(prim_path=env0_robot_path,
                      name='UR10',
-                     usd_path=f'{local_assets}/ur10.usd',
-                     position=ROBOT_POS, attach_gripper=True)
-        robot.set_enabled_self_collisions(True)
+                    #  usd_path=f'{local_assets}/ur10.usd',
+                    #  gripper_usd=gripper_usd,
+                     position=ROBOT_POS,
+                     attach_gripper=True)
+        # robot.set_enabled_self_collisions(True)
 
         env0_table_path = f'{self.default_zero_env_path}/table'
         # table_path = assets_root_path + "/Isaac/Environments/Simple_Room/Props/table_low.usd"
@@ -262,8 +256,8 @@ class PackTask(RLTask):
         super().reset()
         super().cleanup()
         for robot in self._robots:
-            if not robot.handles_initialized:
-                robot.initialize()
+            # if not robot.handles_initialized:
+            robot.initialize()
         indices = torch.arange(self._num_envs, dtype=torch.int64).to(self._device)
         self.reset_envs(indices)
 
@@ -278,8 +272,7 @@ class PackTask(RLTask):
         self._robots_view.set_joint_positions(default_pose, indices=env_indices)
 
     def reset_parts(self, env_indices):
-        # default_pos = START_TABLE_CENTER.repeat(len(env_indices), 1)
-        table_pos = self._table_view.get_world_poses(indices=env_indices)[0]
+        table_pos = self._table_view.get_world_poses(indices=env_indices)[0].to(self._device)
         default_rots = torch.tensor([0, 1, 0, 0]).repeat(len(env_indices), 1)
         for i in range(NUMBER_PARTS):
             parts_offsets = torch.tensor([0, 0.1 * i - 0.23, START_TABLE_HEIGHT / 2 + 0.04]).repeat(len(env_indices), 1).to(self._device)
@@ -312,7 +305,8 @@ class PackTask(RLTask):
         parts_rots = torch.stack(parts_rots).transpose(0, 1)
         
         for env_index in range(self._num_envs):
-            gripper_closed = self._robots[env_index].gripper.is_closed()
+            gripper = self._robots[env_index].gripper
+            gripper_closed = gripper.is_closed()
             self.obs_buf[env_index, 0] = gripper_closed
 
             ideal_selection = IDEAL_PACKAGING.copy()
@@ -369,24 +363,29 @@ class PackTask(RLTask):
 
     def pre_physics_step(self, actions) -> None:
         reset_env_indices = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(reset_env_indices) > 0:
+        if 0 < len(reset_env_indices):
             self.reset_envs(reset_env_indices)
 
+        for env_index in range(self._num_envs):
+            if self.progress_buf[env_index] % 30 == 0:
+                gripper = self._robots[env_index].gripper
+                gripper.close()
+
         # Rotate Joints
-        joint_rots = self._robots_view.get_joint_positions()
-        joint_rots += torch.tensor(actions[:, 0:6]) * self._max_joint_rot_speed
-        self._robots_view.set_joint_positions(positions=joint_rots)
+        # joint_rots = self._robots_view.get_joint_positions()
+        # joint_rots += torch.tensor(actions[:, 0:6]) * self._max_joint_rot_speed
+        # self._robots_view.set_joint_positions(positions=joint_rots)
 
         # Open or close Gripper
-        for env_index in range(self._num_envs):
-            gripper = self._robots[env_index].gripper
-            is_closed = gripper.is_closed()
-            gripper_action = actions[env_index, 6]
-            if 0.9 < gripper_action and is_closed:
-                gripper.open()
-            elif gripper_action < -0.3 and not is_closed:
-                gripper.close()
-    
+        # for env_index in range(self._num_envs):
+        #     gripper = self._robots[env_index].gripper
+        #     is_closed = gripper.is_closed()
+        #     gripper_action = actions[env_index, 6]
+        #     if 0.9 < gripper_action and is_closed:
+        #         gripper.open()
+        #     elif gripper_action < -0.3 and not is_closed:
+        #         gripper.close()
+                
     # Calculate Rewards
     def calculate_metrics(self) -> None:
         targets_dirs = self.obs_buf[:, 7:10]
@@ -406,13 +405,13 @@ class PackTask(RLTask):
             parts_pos = parts_view.get_world_poses()[0]
 
             # Check if part has fallen
-            self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
+            # self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
 
             # if _is_flipped(part_rot):
             #     any_flipped = True
             #     break
 
-        self.reset_buf += (self._max_episode_length - 1 <= self.progress_buf)
+        # self.reset_buf += (self._max_episode_length - 1 <= self.progress_buf)
         self.reset_buf = self.reset_buf >= 1
     
 # def _is_flipped(q1):

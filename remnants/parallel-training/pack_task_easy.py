@@ -61,7 +61,7 @@ DEST_BOX_PATH = "World/DestinationBox"
 DEST_BOX_POS = np.array([0, -0.65, FALLEN_PART_THRESHOLD])
 
 PART_PATH = 'World/Part'
-PART_SOURCE = DEST_BOX_POS + np.array([0, 0, 0.4])
+PART_SOURCE = DEST_BOX_POS + np.array([0, 0, 1.4])
 # NUM_PARTS = 5
 PART_PILLAR_PATH = "World/Pillar"
 
@@ -131,16 +131,16 @@ class PackTask(BaseTask):
         # warehouse_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd"
         # add_reference_to_stage(warehouse_path, self._env_path)
         
-        self.light = create_prim(
-            '/World/Light_' + self.name,
-            "SphereLight",
-            position=ROBOT_POS + LIGHT_OFFSET + self._offset,
-            attributes={
-                "inputs:radius": 0.01,
-                "inputs:intensity": 3e7,
-                "inputs:color": (1.0, 1.0, 1.0)
-            }
-        )
+        # self.light = create_prim(
+        #     '/World/Light_' + self.name,
+        #     "SphereLight",
+        #     position=ROBOT_POS + LIGHT_OFFSET + self._offset,
+        #     attributes={
+        #         "inputs:radius": 0.01,
+        #         "inputs:intensity": 3e6,
+        #         "inputs:color": (1.0, 1.0, 1.0)
+        #     }
+        # )
 
         # box_path = assets_root_path + "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_02.usd"
         box_path = local_assets + '/SM_CardBoxA_02.usd'
@@ -180,8 +180,8 @@ class PackTask(BaseTask):
     def reset(self):
         # super().cleanup()
 
-        # if not self.robot.handles_initialized():
-        self.robot.initialize()
+        if not self.robot.handles_initialized:
+            self.robot.initialize()
         default_pose = np.array([math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0])
         self.robot.set_joint_positions(positions=default_pose)
 
@@ -290,9 +290,9 @@ class PackTask(BaseTask):
         if self.step == LEARNING_STARTS - 1:
             gripper.close()
             return
-        elif self.step == LEARNING_STARTS:
-            self.part_pillar.set_world_pose([0, 0, -100])
-            return
+        # elif self.step == LEARNING_STARTS:
+        #     self.part_pillar.set_world_pose([0, 0, -100])
+        #     return
         elif self.step < LEARNING_STARTS:
             return
         
@@ -307,12 +307,15 @@ class PackTask(BaseTask):
         if success:
             self.robot.apply_action(movement)
 
-        is_closed = gripper.is_closed()
-        if 0.9 < gripper_action and not is_closed:
-            gripper.close()
-        elif gripper_action < -0.9 and is_closed:
-            gripper.open()
+        # is_closed = gripper.is_closed()
+        # if 0.9 < gripper_action and not is_closed:
+        #     gripper.close()
+        # elif gripper_action < -0.9 and is_closed:
+        #     gripper.open()
+            
 
+    # def is_done(self):
+    #     return False
 
     
     # Calculate Rewards

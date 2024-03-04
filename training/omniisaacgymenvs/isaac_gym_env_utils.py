@@ -6,7 +6,8 @@ from skrl import logger
 def get_env_instance(headless: bool = True,
                      enable_livestream: bool = False,
                      enable_viewport: bool = False,
-                     multi_threaded: bool = False) -> "omni.isaac.gym.vec_env.VecEnvBase":
+                     multi_threaded: bool = False,
+                     experience = None) -> "omni.isaac.gym.vec_env.VecEnvBase":
     """
     Instantiate a VecEnvBase-based object compatible with OmniIsaacGymEnvs
 
@@ -89,7 +90,6 @@ def get_env_instance(headless: bool = True,
         env = wrap_env(env, "omniverse-isaacgym")
     """
     from omni.isaac.gym.vec_env import TaskStopException, VecEnvBase, VecEnvMT
-    # from omniisaacgymenvs.vec_env_mt_fix import VecEnvMT
     from omni.isaac.gym.vec_env.vec_env_mt import TrainerMT
 
     class _OmniIsaacGymVecEnv(VecEnvBase):
@@ -159,13 +159,13 @@ def get_env_instance(headless: bool = True,
 
     if multi_threaded:
         try:
-            return _OmniIsaacGymVecEnvMT(headless=headless, enable_livestream=enable_livestream, enable_viewport=enable_viewport)
+            return _OmniIsaacGymVecEnvMT(headless=headless, enable_livestream=enable_livestream, enable_viewport=enable_viewport, experience=experience)
         except TypeError:
             logger.warning("Using an older version of Isaac Sim (2022.2.0 or earlier)")
-            return _OmniIsaacGymVecEnvMT(headless=headless)
+            return _OmniIsaacGymVecEnvMT(headless=headless, experience=experience)
     else:
         try:
-            return _OmniIsaacGymVecEnv(headless=headless, enable_livestream=enable_livestream, enable_viewport=enable_viewport)
+            return _OmniIsaacGymVecEnv(headless=headless, enable_livestream=enable_livestream, enable_viewport=enable_viewport, experience=experience)
         except TypeError:
             logger.warning("Using an older version of Isaac Sim (2022.2.0 or earlier)")
-            return _OmniIsaacGymVecEnv(headless=headless)  # Isaac Sim 2022.2.0 and earlier
+            return _OmniIsaacGymVecEnv(headless=headless, experience=experience)  # Isaac Sim 2022.2.0 and earlier

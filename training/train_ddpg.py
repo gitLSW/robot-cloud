@@ -56,7 +56,9 @@ class Critic(DeterministicMixin, Model):
 # Load the Isaac Gym environment
 headless = False  # set headless to False for rendering
 multi_threaded = headless
-env = get_env_instance(headless=headless, multi_threaded=multi_threaded) # Multithreaded doesn't work with UI open
+env = get_env_instance(headless=headless,
+                       multi_threaded=multi_threaded, # Multithreaded doesn't work with UI open
+                       experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 
 from omniisaacgymenvs.sim_config import SimConfig, merge
 from pack_task import PackTask as Task, TASK_CFG
@@ -65,12 +67,11 @@ TASK_CFG['name'] = name
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
 if not headless:
-    TASK_CFG["task"]["env"]["numEnvs"] = 16
+    TASK_CFG["task"]["env"]["numEnvs"] = 1
 
 sim_config = SimConfig(TASK_CFG)
 task = Task(name=name, sim_config=sim_config, env=env)
 env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True, rendering_dt=TASK_CFG['task']['sim']['dt'])
-# task.reset()
 
 if multi_threaded:
     env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=5)
@@ -112,7 +113,7 @@ ddpg_cfg = merge({
         "device": device
     },
     "experiment": {
-        "directory": f"progress", # experiment's parent directory
+        "directory": "progress", # experiment's parent directory
         "experiment_name": name, # experiment name
         "write_interval": 50, # TensorBoard writing interval (iterations)
         "checkpoint_interval": 200, # interval for checkpoints (iterations)
@@ -139,7 +140,10 @@ agent = DDPG(models=models,
              action_space=env.action_space,
              device=device)
 
-agent.load("./progress/DDPG_Pack/checkpoints/best_agent.pt")
+try:
+    agent.load("./progress/DDPG_Pack/checkpoints/best_agent.pt")
+except FileNotFoundError:
+    print('Cloud not load agent. Created new Agent !')
 
 # Configure and instantiate the RL trainer
 cfg_trainer = {"timesteps": 50_000_000 // num_envs, "headless": headless}
