@@ -28,12 +28,16 @@ class DeterministicActor(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations, 512),
+        self.net = nn.Sequential(nn.Linear(self.num_observations, 1024),
                                  nn.ReLU(),
-                                 nn.Linear(512, 256),
-                                 nn.ReLU(),
+                                 nn.Linear(1024, 2048),
+                                 nn.ReLU6(),
+                                 nn.Linear(2048, 1024),
+                                 nn.Tanh(),
+                                 nn.Linear(1024, 512),
+                                 nn.Tanh(),
                                  nn.Linear(256, self.num_actions),
-                                 nn.Tanh())
+                                 nn.ReLU())
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), {}
@@ -43,10 +47,14 @@ class Critic(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 512),
+        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 1024),
                                  nn.ReLU(),
-                                 nn.Linear(512, 256),
-                                 nn.ReLU(),
+                                 nn.Linear(1024, 2048),
+                                 nn.ReLU6(),
+                                 nn.Linear(2048, 1024),
+                                 nn.Tanh(),
+                                 nn.Linear(1024, 512),
+                                 nn.Tanh(),
                                  nn.Linear(256, 1))
 
     def compute(self, inputs, role):
@@ -67,7 +75,7 @@ TASK_CFG['name'] = name
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
 if not headless:
-    TASK_CFG["task"]["env"]["numEnvs"] = 1
+    TASK_CFG["task"]["env"]["numEnvs"] = 100
 
 sim_config = SimConfig(TASK_CFG)
 task = Task(name=name, sim_config=sim_config, env=env)
@@ -132,7 +140,7 @@ run = wandb.init(
 )
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=25000, num_envs=num_envs, device=device)
+memory = RandomMemory(memory_size=60_000, num_envs=num_envs, device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,

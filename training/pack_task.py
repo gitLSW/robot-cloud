@@ -54,7 +54,7 @@ TASK_CFG = {
         "name": 'Pack_Task',
         # "physics_engine": "physx",
         "env": {
-            "numEnvs": 512,
+            "numEnvs": 25,
             "envSpacing": 4,
             "episodeLength": 300,
             # "enableDebugVis": False,
@@ -171,16 +171,16 @@ class PackTask(RLTask):
         self._max_episode_length = self._task_cfg["env"]["episodeLength"]
 
         # Robot turning ange of max speed is 191deg/s
-        self._max_joint_rot_speed = (191.0 * math.pi / 180) * self.dt
+        self._max_joint_rot_speed = torch.scalar_tensor((191.0 * torch.pi / 180) * self.dt).to(self._device)
         
-        # super().update_config(sim_config)
+        super().update_config(sim_config)
 
 
     def set_up_scene(self, scene) -> None:
         print('SETUP TASK', self.name)
         
         self.create_env0()
-        super().set_up_scene(scene=scene, replicate_physics=True, filter_collisions=False, copy_from_source=True) # Clones env0
+        super().set_up_scene(scene=scene, replicate_physics=True, filter_collisions=True, copy_from_source=False) # Clones env0
 
         self._boxes_view = XFormPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/box',
                                          name='box_view',
@@ -314,10 +314,10 @@ class PackTask(RLTask):
             gripper_pos = self._robots[env_index].gripper.get_world_pose()[0]
             gripper_pos -= boxes_pos[env_index]
 
-            gripper_to_closest_part_dist = 100000
+            gripper_to_closest_part_dist = 10000000
             gripper_to_closest_part_dir = None
 
-            gripper_to_ideal_part_dist = 100000
+            gripper_to_ideal_part_dist = 10000000
             gripper_to_ideal_part_dir = None
             for part_index in range(NUMBER_PARTS):
                 part_pos = parts_pos[env_index][part_index]
@@ -368,7 +368,7 @@ class PackTask(RLTask):
 
         # Rotate Joints
         joint_rots = self._robots_view.get_joint_positions()
-        joint_rots += torch.tensor(actions[:, 0:6]) * self._max_joint_rot_speed
+        joint_rots += torch.tensor(actions[:, 0:6]).to(self._device) * self._max_joint_rot_speed
         self._robots_view.set_joint_positions(positions=joint_rots)
 
         # Open or close Gripper
@@ -400,14 +400,14 @@ class PackTask(RLTask):
             parts_pos = parts_view.get_world_poses()[0]
 
             # Check if part has fallen
-            # self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
+            self.reset_buf += (parts_pos[:, 2] < FALLEN_PART_THRESHOLD)
 
             # if _is_flipped(part_rot):
             #     any_flipped = True
             #     break
 
-        # self.reset_buf += (self._max_episode_length - 1 <= self.progress_buf)
-        self.reset_buf = self.reset_buf >= 1
+        self.reset_buf += (self._max_episode_length - 1 <= self.progress_buf)
+        self.reset_buf = self.reset_buf >= 1 # Cast to bool
     
 # def _is_flipped(q1):
 #     """
