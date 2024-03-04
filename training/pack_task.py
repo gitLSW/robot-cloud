@@ -29,7 +29,7 @@ ROBOT_POS = torch.tensor([0.0, 0.0, FALLEN_PART_THRESHOLD])
 
 DEST_BOX_POS = torch.tensor([0, -0.65, FALLEN_PART_THRESHOLD])
 
-START_TABLE_POS = torch.tensor([0, 0.8, FALLEN_PART_THRESHOLD + 0.18])
+START_TABLE_POS = torch.tensor([0, 0.8, FALLEN_PART_THRESHOLD])
 START_TABLE_HEIGHT = 0.6
 START_TABLE_CENTER = START_TABLE_POS + torch.tensor([0, 0, START_TABLE_HEIGHT / 2])
 
@@ -366,25 +366,20 @@ class PackTask(RLTask):
         if 0 < len(reset_env_indices):
             self.reset_envs(reset_env_indices)
 
-        for env_index in range(self._num_envs):
-            if self.progress_buf[env_index] % 30 == 0:
-                gripper = self._robots[env_index].gripper
-                gripper.close()
-
         # Rotate Joints
-        # joint_rots = self._robots_view.get_joint_positions()
-        # joint_rots += torch.tensor(actions[:, 0:6]) * self._max_joint_rot_speed
-        # self._robots_view.set_joint_positions(positions=joint_rots)
+        joint_rots = self._robots_view.get_joint_positions()
+        joint_rots += torch.tensor(actions[:, 0:6]) * self._max_joint_rot_speed
+        self._robots_view.set_joint_positions(positions=joint_rots)
 
         # Open or close Gripper
-        # for env_index in range(self._num_envs):
-        #     gripper = self._robots[env_index].gripper
-        #     is_closed = gripper.is_closed()
-        #     gripper_action = actions[env_index, 6]
-        #     if 0.9 < gripper_action and is_closed:
-        #         gripper.open()
-        #     elif gripper_action < -0.3 and not is_closed:
-        #         gripper.close()
+        for env_index in range(self._num_envs):
+            gripper = self._robots[env_index].gripper
+            is_closed = gripper.is_closed()
+            gripper_action = actions[env_index, 6]
+            if 0.9 < gripper_action and is_closed:
+                gripper.open()
+            elif gripper_action < -0.3 and not is_closed:
+                gripper.close()
                 
     # Calculate Rewards
     def calculate_metrics(self) -> None:
