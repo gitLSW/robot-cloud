@@ -53,7 +53,7 @@ TASK_CFG = {
         "env": {
             "numEnvs": 625,
             "envSpacing": 4,
-            "episodeLength": 400, # The episode length is the max time for one part to be packed, not the whole box
+            "episodeLength": 30, # The episode length is the max time for one part to be packed, not the whole box
             # "enableDebugVis": False,
             # "controlFrequencyInv": 4
         },
@@ -202,7 +202,6 @@ class PackTask(RLTask):
         robot.set_enabled_self_collisions(True)
 
     def cleanup(self):
-        self._next_part_buf = torch.zeros((self._num_envs,)).to(self._device)
         self._curr_parts = [None for _ in range(self._num_envs)]
         self._placed_parts = [[] for _ in range(self._num_envs)]
         super().cleanup()
@@ -219,14 +218,14 @@ class PackTask(RLTask):
     def reset_env(self, env_index):
         self.progress_buf[env_index] = 0
         self.reset_buf[env_index] = False
-        self._next_part_buf[env_index] = False
-
-        part = self._curr_parts[env_index]
-        if part:
-            delete_prim(part.path)
+        
+        curr_part = self._curr_parts[env_index]
+        if curr_part:
+            delete_prim(curr_part.prim_path)
+            self._curr_parts[env_index] = None
+            
         for part in self._placed_parts[env_index]:
-            delete_prim(part.path)
-        self._curr_parts[env_index] = None
+            delete_prim(part.prim_path)
         self._placed_parts[env_index] = []
 
         self.reset_robot(env_index)
@@ -243,14 +242,15 @@ class PackTask(RLTask):
 
         part_index = len(self._placed_parts[env_index])
         part_path = f'{self.default_base_env_path}/env_{env_index}/parts/part_{part_index}'
+        print(part_path, part_index)
         part_usd_path = local_assets + '/draexlmaier_part.usd'
         add_reference_to_stage(part_usd_path, part_path)
         part = RigidPrim(prim_path=part_path,
+                        name=f'env_{env_index}_part_{part_index}',
                         position=part_pos,
                         orientation=[0, 1, 0, 0],
                         mass=0.4) # [-0.70711, 0.70711, 0, 0]
         setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
-        self.world.scene.add(part)
         return part
 
 
@@ -277,8 +277,10 @@ class PackTask(RLTask):
 
             ideal_selection = IDEAL_PACKAGING.copy()
             box_pos = boxes_pos[env_index]
+            eval_parts = self._placed_parts[env_index]
             curr_part = self._curr_parts[env_index]
-            eval_parts = self._placed_parts[env_index] + [curr_part]
+            if curr_part:
+                eval_parts.append(curr_part)
 
             # box_state = []
             # ideal_pose_for_curr_part = None
@@ -344,24 +346,23 @@ class PackTask(RLTask):
             if self.reset_buf[env_index]:
                 self.reset_env(env_index)
                 continue
-
-            next_part = self._next_part_buf[env_index]
-            if next_part:
-                self.progress_buf[env_index] = 0
-                self.reset_robot(env_index)
-                continue
             
             # Rotate Joints
             robot = self._robots[env_index]
             gripper = robot.gripper
 
-            env_step = self.progress_buf[env_index]
-            if env_step == 1:
-                # We cannot call this in the same step as reset robot since the world needs
-                # to update once to update the gripper position to the new joint rotations
-                part = next_part()
+            if not self._curr_parts[env_index]:
+                self.reset_robot(env_index)
+                self._curr_parts[env_index] = self.add_part(env_index)
                 gripper.close()
                 continue
+            
+
+            # env_step = self.progress_buf[env_index]
+            # if env_step == 1:
+            #     # We cannot call this in the same step as reset robot since the world needs
+            #     # to update once to update the gripper position to the new joint rotations
+            #     continue
 
             joint_rots = robot.get_joint_positions()
             joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
@@ -382,7 +383,12 @@ class PackTask(RLTask):
         parts_to_ideal_pos = self.obs_buf[:, 7:10]
         targets_dists = torch.linalg.norm(parts_to_ideal_pos, dim=1)
 
-        self._next_part_buf = targets_dists < 0.07
+        # self._next_part_buf = targets_dists < 0.07
+        next_part_env_indices = (targets_dists < 0.07).nonzero(as_tuple=False).squeeze(-1)
+        for env_index in next_part_env_indices:
+            self._placed_parts.append(self._curr_parts[env_index])
+            self._curr_parts[env_index] = None
+            self.progress_buf[env_index] = 0 # A new part gets placed with each reset
 
         # part_rot_diffs = self.obs_buf[:, 10:13]
         ideal_pos_dists = self.obs_buf[:, 10:(10 + NUMBER_PARTS)]
@@ -396,6 +402,9 @@ class PackTask(RLTask):
         self.reset_buf.fill_(0)
         for env_index in range(self._num_envs):
             part = self._curr_parts[env_index]
+            if not part:
+                continue
+
             part_pos = part.get_world_pose()[0]
 
             # Check if part has fallen
