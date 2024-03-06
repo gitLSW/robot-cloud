@@ -28,16 +28,15 @@ class DeterministicActor(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations, 1024),
+        self.net = nn.Sequential(nn.Linear(self.num_observations, 512),
                                  nn.ReLU(),
-                                 nn.Linear(1024, 2048),
+                                 nn.Linear(512, 1024),
                                  nn.ReLU6(),
-                                 nn.Linear(2048, 1024),
-                                 nn.Tanh(),
                                  nn.Linear(1024, 512),
                                  nn.Tanh(),
-                                 nn.Linear(256, self.num_actions),
-                                 nn.ReLU())
+                                 nn.Linear(512, 256),
+                                 nn.Tanh(),
+                                 nn.Linear(256, self.num_actions))
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), {}
@@ -47,13 +46,13 @@ class Critic(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 1024),
+        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 256),
                                  nn.ReLU(),
-                                 nn.Linear(1024, 2048),
+                                 nn.Linear(256, 512),
                                  nn.ReLU6(),
-                                 nn.Linear(2048, 1024),
+                                 nn.Linear(512, 512),
                                  nn.Tanh(),
-                                 nn.Linear(1024, 512),
+                                 nn.Linear(512, 256),
                                  nn.Tanh(),
                                  nn.Linear(256, 1))
 
@@ -69,13 +68,13 @@ env = get_env_instance(headless=headless,
                        experience=f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit')
 
 from omniisaacgymenvs.sim_config import SimConfig, merge
-from pack_task import PackTask as Task, TASK_CFG
+from pack_task_part_in_gripper import PackTask as Task, TASK_CFG
 
 TASK_CFG['name'] = name
 TASK_CFG["seed"] = seed
 TASK_CFG["headless"] = headless
 if not headless:
-    TASK_CFG["task"]["env"]["numEnvs"] = 100
+    TASK_CFG["task"]["env"]["numEnvs"] = 25
 
 sim_config = SimConfig(TASK_CFG)
 task = Task(name=name, sim_config=sim_config, env=env)
@@ -123,8 +122,8 @@ ddpg_cfg = merge({
     "experiment": {
         "directory": "progress", # experiment's parent directory
         "experiment_name": name, # experiment name
-        "write_interval": 50, # TensorBoard writing interval (iterations)
-        "checkpoint_interval": 200, # interval for checkpoints (iterations)
+        "write_interval": 100, # TensorBoard writing interval (iterations)
+        "checkpoint_interval": 1000, # interval for checkpoints (iterations)
         "store_separately": False, # whether to store checkpoints separately
         "wandb": True, # whether to use Weights & Biases
         "wandb_kwargs": {} # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
@@ -140,7 +139,7 @@ run = wandb.init(
 )
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=60_000, num_envs=num_envs, device=device)
+memory = RandomMemory(memory_size=90_000, num_envs=num_envs, device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,
