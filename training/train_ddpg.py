@@ -61,7 +61,7 @@ class Critic(DeterministicMixin, Model):
 
 
 # Load the Isaac Gym environment
-headless = False  # set headless to False for rendering
+headless = True # set headless to False for rendering
 multi_threaded = headless
 env = get_env_instance(headless=headless,
                        multi_threaded=multi_threaded, # Multithreaded doesn't work with UI open
@@ -81,7 +81,7 @@ task = Task(name=name, sim_config=sim_config, env=env)
 env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=True, rendering_dt=TASK_CFG['task']['sim']['dt'])
 
 if multi_threaded:
-    env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=5)
+    env.initialize(action_queue=env.action_queue, data_queue=env.data_queue, timeout=30)
 
 # wrap the environment
 env = OmniverseIsaacGymWrapper(env)
@@ -122,7 +122,7 @@ ddpg_cfg = merge({
     "experiment": {
         "directory": "progress", # experiment's parent directory
         "experiment_name": name, # experiment name
-        "write_interval": 100, # TensorBoard writing interval (iterations)
+        "write_interval": 200, # TensorBoard writing interval (iterations)
         "checkpoint_interval": 1000, # interval for checkpoints (iterations)
         "store_separately": False, # whether to store checkpoints separately
         "wandb": True, # whether to use Weights & Biases
@@ -139,7 +139,7 @@ run = wandb.init(
 )
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=90_000, num_envs=num_envs, device=device)
+memory = RandomMemory(memory_size=100_000, num_envs=num_envs, device=device)
 agent = DDPG(models=models,
              memory=memory,
              cfg=ddpg_cfg,

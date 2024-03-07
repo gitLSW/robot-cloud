@@ -51,7 +51,7 @@ TASK_CFG = {
         "name": 'Pack_Task',
         # "physics_engine": "physx",
         "env": {
-            "numEnvs": 625,
+            "numEnvs": 100,
             "envSpacing": 4,
             "episodeLength": 400, # The episode length is the max time for one part to be packed, not the whole box
             # "enableDebugVis": False,
@@ -165,11 +165,6 @@ class PackTask(RLTask):
                                          name='box_view',
                                          reset_xform_properties=False)
         scene.add(self._boxes_view)
-        
-        # parts_view = RigidPrimView(prim_paths_expr='{self.default_base_env_path}/.*/part_0',
-        #                             name='part_0_view',
-        #                             reset_xform_properties=False)
-        # scene.add(parts_view)
 
         self._robots_view = RobotView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot', name='ur10_view')
         scene.add(self._robots_view)
@@ -177,7 +172,6 @@ class PackTask(RLTask):
         self._grippers = RigidPrimView(prim_paths_expr=f'{self.default_base_env_path}/.*/robot/ee_link', name="gripper_view")
         scene.add(self._grippers)
 
-        # self._curr_parts = [RigidPrim(prim_path=path) for path in parts_view.prim_paths]
         self._robots = [UR10(prim_path=robot_path, attach_gripper=True) for robot_path in self._robots_view.prim_paths]
     
     def create_env0(self):
@@ -323,7 +317,7 @@ class PackTask(RLTask):
                 # env_obs['box_state'].append([min_dist, rot_dist])
 
                 if part_index == len(eval_parts) - 1:
-                    part_pos_diff = part_pos - torch.tensor(ideal_part[0], device=self._device)
+                    part_pos_diff = part_pos - torch.tensor(ideal_part[0]).to(self._device)
                 #     part_rot_euler = R.from_quat(part_rot.cpu()).as_euler('xyz', degrees=False)
                 #     ideal_rot_euler = R.from_quat(ideal_part[1]).as_euler('xyz', degrees=False)
                 #     part_rot_diff = torch.tensor(ideal_rot_euler - part_rot_euler)
@@ -363,7 +357,7 @@ class PackTask(RLTask):
                 continue
 
             joint_rots = robot.get_joint_positions()
-            joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
+            joint_rots += actions[env_index, 0:6].to(self._device) * self._max_joint_rot_speed
             robot.set_joint_positions(positions=joint_rots)
 
             # Open or close Gripper
@@ -385,7 +379,7 @@ class PackTask(RLTask):
         # Move Parts
         # if len(self._placed_parts) + (1 if self._curr_parts[env_index] else 0) < NUMBER_PARTS:
         # TODO: ADD ROT DIST AS WELL AS A CONDITION
-        next_part_env_indices = (parts_to_ideal_pos_dists < 0.02).nonzero(as_tuple=False).squeeze(-1)
+        next_part_env_indices = (parts_to_ideal_pos_dists < 0.003).nonzero(as_tuple=False).squeeze(-1)
         for env_index in next_part_env_indices:
             self._placed_parts[env_index].append(self._curr_parts[env_index])
             self._curr_parts[env_index] = self.add_part(env_index) # A new part gets placed with each reset
