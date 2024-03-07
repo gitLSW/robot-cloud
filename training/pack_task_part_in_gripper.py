@@ -8,7 +8,7 @@ enable_extension("omni.isaac.universal_robots")
 # enable_extension("omni.isaac.sensor")
 
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from omni.isaac.core.utils.prims import delete_prim #, create_prim, get_prim_at_path
+from omni.isaac.core.utils.prims import delete_prim, get_prim_object_type #, create_prim, get_prim_at_path
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.physx.scripts.utils import setRigidBody, setStaticCollider #, setColliderSubtree, setCollider, addCollisionGroup, setPhysics, removePhysics, removeRigidBody
 
@@ -53,7 +53,7 @@ TASK_CFG = {
         "env": {
             "numEnvs": 625,
             "envSpacing": 4,
-            "episodeLength": 30, # The episode length is the max time for one part to be packed, not the whole box
+            "episodeLength": 400, # The episode length is the max time for one part to be packed, not the whole box
             # "enableDebugVis": False,
             # "controlFrequencyInv": 4
         },
@@ -219,6 +219,8 @@ class PackTask(RLTask):
         self.progress_buf[env_index] = 0
         self.reset_buf[env_index] = False
         
+        self.reset_robot(env_index)
+
         curr_part = self._curr_parts[env_index]
         if curr_part:
             delete_prim(curr_part.prim_path)
@@ -226,9 +228,10 @@ class PackTask(RLTask):
             
         for part in self._placed_parts[env_index]:
             delete_prim(part.prim_path)
-        self._placed_parts[env_index] = []
 
-        self.reset_robot(env_index)
+        self._placed_parts[env_index] = []
+        self._curr_parts[env_index] = self.add_part(env_index)
+
 
     def reset_robot(self, env_index):
         robot = self._robots[env_index]
@@ -236,13 +239,15 @@ class PackTask(RLTask):
         robot.set_joint_positions(positions=default_pose)
         robot.gripper.open()
 
+
     def add_part(self, env_index) -> None:
-        gripper = self._robots[env_index].gripper
-        part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.05], device=self._device)
+        # gripper = self._robots[env_index].gripper
+        # part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.18], device=self._device)
+        # box_pos = self._boxes_view.get_world_poses()[0][env_index]
+        part_pos = DEST_BOX_POS + torch.tensor([-0.12, -0.05, 0.48]).to(self._device)
 
         part_index = len(self._placed_parts[env_index])
         part_path = f'{self.default_base_env_path}/env_{env_index}/parts/part_{part_index}'
-        print(part_path, part_index)
         part_usd_path = local_assets + '/draexlmaier_part.usd'
         add_reference_to_stage(part_usd_path, part_path)
         part = RigidPrim(prim_path=part_path,
@@ -250,7 +255,8 @@ class PackTask(RLTask):
                         position=part_pos,
                         orientation=[0, 1, 0, 0],
                         mass=0.4) # [-0.70711, 0.70711, 0, 0]
-        setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=True) # Kinematic True means immovable
+        if get_prim_object_type(part_path) != 'rigid_body':
+            setRigidBody(part.prim, approximationShape='convexDecomposition', kinematic=False) # Kinematic True means immovable
         return part
 
 
@@ -277,10 +283,11 @@ class PackTask(RLTask):
 
             ideal_selection = IDEAL_PACKAGING.copy()
             box_pos = boxes_pos[env_index]
-            eval_parts = self._placed_parts[env_index]
             curr_part = self._curr_parts[env_index]
-            if curr_part:
-                eval_parts.append(curr_part)
+            eval_parts = self._placed_parts[env_index] + [curr_part]
+
+            if curr_part == None:
+                raise NotImplementedError()
 
             # box_state = []
             # ideal_pose_for_curr_part = None
@@ -340,7 +347,6 @@ class PackTask(RLTask):
         return self.obs_buf[env_index]
 
 
-
     def pre_physics_step(self, actions) -> None:
         for env_index in range(self._num_envs):
             if self.reset_buf[env_index]:
@@ -351,18 +357,10 @@ class PackTask(RLTask):
             robot = self._robots[env_index]
             gripper = robot.gripper
 
-            if not self._curr_parts[env_index]:
-                self.reset_robot(env_index)
-                self._curr_parts[env_index] = self.add_part(env_index)
+            env_step = self.progress_buf[env_index]
+            if env_step <= 1:
                 gripper.close()
                 continue
-            
-
-            # env_step = self.progress_buf[env_index]
-            # if env_step == 1:
-            #     # We cannot call this in the same step as reset robot since the world needs
-            #     # to update once to update the gripper position to the new joint rotations
-            #     continue
 
             joint_rots = robot.get_joint_positions()
             joint_rots += torch.tensor(actions[env_index, 0:6]) * self._max_joint_rot_speed
@@ -378,24 +376,28 @@ class PackTask(RLTask):
 
     
     # Calculate Rewards
-    # Calculate Rewards
     def calculate_metrics(self) -> None:
-        parts_to_ideal_pos = self.obs_buf[:, 7:10]
-        targets_dists = torch.linalg.norm(parts_to_ideal_pos, dim=1)
+        pos_rew = 0
 
-        # self._next_part_buf = targets_dists < 0.07
-        next_part_env_indices = (targets_dists < 0.07).nonzero(as_tuple=False).squeeze(-1)
+        parts_to_ideal_pos = self.obs_buf[:, 7:10]
+        parts_to_ideal_pos_dists = torch.linalg.norm(parts_to_ideal_pos, dim=1)
+
+        # Move Parts
+        # if len(self._placed_parts) + (1 if self._curr_parts[env_index] else 0) < NUMBER_PARTS:
+        # TODO: ADD ROT DIST AS WELL AS A CONDITION
+        next_part_env_indices = (parts_to_ideal_pos_dists < 0.02).nonzero(as_tuple=False).squeeze(-1)
         for env_index in next_part_env_indices:
-            self._placed_parts.append(self._curr_parts[env_index])
-            self._curr_parts[env_index] = None
-            self.progress_buf[env_index] = 0 # A new part gets placed with each reset
+            self._placed_parts[env_index].append(self._curr_parts[env_index])
+            self._curr_parts[env_index] = self.add_part(env_index) # A new part gets placed with each reset
+            self.progress_buf[env_index] = 0
+            pos_rew += 200
 
         # part_rot_diffs = self.obs_buf[:, 10:13]
         ideal_pos_dists = self.obs_buf[:, 10:(10 + NUMBER_PARTS)]
         ideal_rot_dists = self.obs_buf[:, (10 + NUMBER_PARTS):(10 + 2 * NUMBER_PARTS)]
 
         box_error_sum = ideal_pos_dists.square().sum(dim=1) + ideal_rot_dists.abs().sum(dim=1)
-        self.rew_buf = -targets_dists.square() - box_error_sum
+        self.rew_buf = -parts_to_ideal_pos_dists.square() - box_error_sum + pos_rew
 
     def is_done(self):
         # any_flipped = False
@@ -410,6 +412,7 @@ class PackTask(RLTask):
             # Check if part has fallen
             self.reset_buf[env_index] += (part_pos[2] < FALLEN_PART_THRESHOLD - 0.05)
 
+            # TODO: FIX THIS SHIT
             # if _is_flipped(part_rot):
             #     any_flipped = True
             #     break

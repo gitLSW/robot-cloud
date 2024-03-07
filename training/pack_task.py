@@ -54,7 +54,7 @@ TASK_CFG = {
         "name": 'Pack_Task',
         # "physics_engine": "physx",
         "env": {
-            "numEnvs": 25,
+            "numEnvs": 625,
             "envSpacing": 4,
             "episodeLength": 300,
             # "enableDebugVis": False,
