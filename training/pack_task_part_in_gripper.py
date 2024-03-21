@@ -280,9 +280,6 @@ class PackTask(RLTask):
             curr_part = self._curr_parts[env_index]
             eval_parts = self._placed_parts[env_index] + [curr_part]
 
-            if curr_part == None:
-                raise NotImplementedError()
-
             # box_state = []
             # ideal_pose_for_curr_part = None
             for part_index in range(NUMBER_PARTS):
