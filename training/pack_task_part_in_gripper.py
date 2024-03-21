@@ -237,8 +237,8 @@ class PackTask(RLTask):
     def add_part(self, env_index) -> None:
         # gripper = self._robots[env_index].gripper
         # part_pos = torch.tensor(gripper.get_world_pose()[0]) - torch.tensor([0, 0, 0.18], device=self._device)
-        # box_pos = self._boxes_view.get_world_poses()[0][env_index]
-        part_pos = DEST_BOX_POS + torch.tensor([-0.12, -0.05, 0.48]).to(self._device)
+        box_pos = self._boxes_view.get_world_poses()[0][env_index]
+        part_pos = box_pos + torch.tensor([-0.12, -0.05, 0.48]).to(self._device)
 
         part_index = len(self._placed_parts[env_index])
         part_path = f'{self.default_base_env_path}/env_{env_index}/parts/part_{part_index}'
